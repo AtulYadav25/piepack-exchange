@@ -1,6 +1,6 @@
 import type { Market } from "./config.js";
 
-type Side = 'long' | 'short';
+type Side = 'buy' | 'sell';
 type OrderType = 'limit' | 'market';
 type OrderStatus = 'open' | 'partially_filled' | 'filled' | 'cancelled';
 
@@ -15,6 +15,33 @@ export interface Order {
     remainingQuantity: number;  // what's left to fill
     status: OrderStatus;
     createdAt: number;
+}
+
+export interface TriggerOrder {
+    id: string;
+    userId: string;
+    market: Market;
+    side: Side;
+    type: OrderType;
+    orderId: string;
+    quantity: number;           // original quantity
+    remainingQuantity: number;  // what's left to fill
+    status: OrderStatus;
+    createdAt: number;
+    triggerPrice: number;
+    triggerDirection: 'ABOVE' | 'BELOW';
+    triggerType: 'stoploss' | 'takeprofit';
+    siblingId?: string;
+}
+
+export interface PlaceOrderRequest {
+    userId: string;
+    market: Market;
+    order: Order;
+    bracket?: {
+        stopLoss?: TriggerOrder;
+        takeProfit?: TriggerOrder;
+    }
 }
 
 export interface Trade {
