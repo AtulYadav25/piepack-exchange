@@ -31,13 +31,11 @@ app.setSerializerCompiler(serializerCompiler)
 //Error Handler
 app.setErrorHandler(errorHandler);
 
-app.get('/', (req, reply) => {
-
+app.get('/', async (req, reply) => {
     return reply.code(200).send({
         success: true,
         message: "Welcome to PiePack Exchange"
     })
-
 })
 
 app.register(orderRoutes, { prefix: "/api/v1/order" });

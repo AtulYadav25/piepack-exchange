@@ -1,10 +1,10 @@
-import type { Order, Trade, TriggerOrder } from "../types.js";
+import type { Market, Order, Trade } from "../types.js";
 
 export class OrderBook {
 
-    market: string = '';
+    market: Market;
     constructor(marketPair: string) {
-        this.market = marketPair; //TODO: Probably we dont need this!
+        this.market = marketPair as Market; //TODO: Probably we dont need this!
     }
 
     // price -> orders (FIFO)
@@ -19,6 +19,9 @@ export class OrderBook {
 
 
     addLimitOrder(order: Order): Trade[] {
+        order.id ??= crypto.randomUUID();
+        order.remainingQuantity ??= order.quantity;
+
         if (!order.price) {
             order.status = 'cancelled';
             return [];
@@ -42,24 +45,32 @@ export class OrderBook {
             sideMap.set(order.price, queue);
 
             this.orderIndex.set(order.id, order);
+            console.log(sideMap);
         }
 
         //Recalculate best bid and best ask
         this.updateBestPrices();
 
+
         return trades;
     }
 
     addMarketOrder(order: Order): Trade[] {
+        order.id ??= crypto.randomUUID();
+        order.remainingQuantity ??= order.quantity;
+
         // todo: match what it can, remainder is CANCELLED (market orders never rest)
         if (order.side === 'buy') {
             if (!this.bestAsk) {
                 order.status = 'cancelled';
                 // TODO : Send Acknowledgement to client
+                console.log("Order Cancelled");
                 return [];
             }
 
             const trades = this.matchAgainstBook(order);
+
+            console.log("Trades: ", trades)
 
             return trades;
 
@@ -67,11 +78,13 @@ export class OrderBook {
         } else {
             if (!this.bestBid) {
                 order.status = 'cancelled';
+                console.log("Order Cancelled");
                 // TODO : Send Acknowledgement to client
                 return [];
             };
 
             const trades = this.matchAgainstBook(order);
+            console.log("Trades: ", trades)
 
             return trades;
         }
@@ -81,7 +94,7 @@ export class OrderBook {
         const order = this.orderIndex.get(orderId);
         if (!order) return false;
 
-        if (order.price !== null) {
+        if (order.price !== null && order.price !== undefined) {
             const sideMap = order.side === 'buy' ? this.bids : this.asks;
             const queue = sideMap.get(order.price);
             if (queue) {
@@ -113,7 +126,7 @@ export class OrderBook {
             .slice(0, levels)
             .map(([price, orders]) => [
                 price,
-                orders.reduce((sum, o) => sum + o.remainingQuantity, 0)
+                orders.reduce((sum, o) => sum + (o.remainingQuantity ?? 0), 0)
             ] as [number, number]);
 
         const sortedAsks = Array.from(this.asks.entries())
@@ -121,7 +134,7 @@ export class OrderBook {
             .slice(0, levels)
             .map(([price, orders]) => [
                 price,
-                orders.reduce((sum, o) => sum + o.remainingQuantity, 0)
+                orders.reduce((sum, o) => sum + (o.remainingQuantity ?? 0), 0)
             ] as [number, number]);
 
         return { bids: sortedBids, asks: sortedAsks };
@@ -136,12 +149,15 @@ export class OrderBook {
     private updateBestPrices(): void {
         this.bestBid = this.bids.size > 0 ? Math.max(...this.bids.keys()) : null;
         this.bestAsk = this.asks.size > 0 ? Math.min(...this.asks.keys()) : null;
+        console.log("Best Bid: ", this.bestBid);
+        console.log("Best Ask: ", this.bestAsk);
     }
 
     // private
     private matchAgainstBook(incoming: Order): Trade[] {
         const trades: Trade[] = [];
         let oppositeSide = incoming.side === 'buy' ? this.asks : this.bids;
+        incoming.remainingQuantity ??= incoming.quantity;
 
         while (incoming.remainingQuantity > 0 && this.hasMatchablePrice(oppositeSide, incoming)) {
             const bestPrice = this.getBestOppositePrice(oppositeSide);
@@ -153,6 +169,7 @@ export class OrderBook {
             while (queue.length > 0 && incoming.remainingQuantity > 0) {
                 const resting = queue[0];
                 if (!resting) break;
+                resting.remainingQuantity ??= resting.quantity;
 
                 const fillQty = Math.min(incoming.remainingQuantity, resting.remainingQuantity);
 
@@ -165,7 +182,9 @@ export class OrderBook {
 
                 if (resting.remainingQuantity === 0) {
                     queue.shift();
-                    this.orderIndex.delete(resting.id);
+                    if (resting.id) {
+                        this.orderIndex.delete(resting.id);
+                    }
                     //Send Acknowledgement to client order is filled
                 }
             }
@@ -196,8 +215,8 @@ export class OrderBook {
             market: this.market,
             price,
             quantity: qty,
-            makerOrderId: maker.id,
-            takerOrderId: taker.id,
+            makerOrderId: maker.id ?? '',
+            takerOrderId: taker.id ?? '',
             makerUserId: maker.userId,
             takerUserId: taker.userId,
             executedAt: Date.now(),

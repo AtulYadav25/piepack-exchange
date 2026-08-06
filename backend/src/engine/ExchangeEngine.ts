@@ -1,12 +1,14 @@
 import type { Market } from "./config.js";
+import { SUPPORTED_MARKETS } from "./config.js";
 import { MarketEngine } from "./markets/MarketEngine.js";
 import type { PlaceOrderRequest, Trade } from "./types.js";
+
 
 export class ExchangeEngine {
     private markets = new Map<Market, MarketEngine>();
 
-    constructor(markets: Market[]) {
-        for (const m of markets) {
+    constructor() {
+        for (const m of SUPPORTED_MARKETS) {
             this.markets.set(m, new MarketEngine(m));
         }
     }

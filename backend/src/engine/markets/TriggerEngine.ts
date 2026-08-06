@@ -15,6 +15,8 @@ export class TriggerEngine {
     private triggerIndex: Map<string, TriggerOrder> = new Map();
 
     addTriggerOrder(order: TriggerOrder): void {
+        order.id ??= crypto.randomUUID();
+
         const targetMap = order.triggerDirection === 'BELOW'
             ? this.triggerOnPriceDrop
             : this.triggerOnPriceRise;
@@ -84,7 +86,9 @@ export class TriggerEngine {
 
         // Remove triggered orders from the index map
         for (const order of triggeredOrders) {
-            this.triggerIndex.delete(order.id);
+            if (order.id) {
+                this.triggerIndex.delete(order.id);
+            }
         }
 
         return triggeredOrders;
