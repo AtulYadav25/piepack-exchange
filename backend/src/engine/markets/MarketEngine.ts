@@ -2,23 +2,24 @@ import type { Order, PlaceOrderRequest, Trade } from "../types.js";
 import { OrderBook } from "./OrderBook.js";
 import { TriggerEngine } from "./TriggerEngine.js";
 import { trades } from "../MemoryDb.js";
+import type { BalanceEngine } from "../balances/balanceEngine.js";
 
 export class MarketEngine {
 
     private orderBook: OrderBook;
     private triggerEngine: TriggerEngine;
+    private balanceEngine: BalanceEngine;
 
     currentPrice: number;
 
-    constructor(symbol: string) {
-        this.orderBook = new OrderBook(symbol);
+    constructor(symbol: string, balanceEngine: BalanceEngine) {
+        this.orderBook     = new OrderBook(symbol);
         this.triggerEngine = new TriggerEngine(symbol);
-        this.currentPrice = 10; // TODO : Lets get this price from the constructor arguments
+        this.balanceEngine = balanceEngine;
+        this.currentPrice  = 10; // TODO : Lets get this price from the constructor arguments
     }
 
     placeUserOrder(req: PlaceOrderRequest): void {
-        // TODO : Validate User Funds, lock the funds
-
         let executedTrades: Trade[] = [];
         if (req.order.type === 'limit') {
             executedTrades = this.orderBook.addLimitOrder(req.order);
@@ -26,11 +27,27 @@ export class MarketEngine {
             executedTrades = this.orderBook.addMarketOrder(req.order);
         }
 
+        // Consume funds for each matched trade (partial fills included)
+        for (const trade of executedTrades) {
+            // We need both sides of the trade to update balances correctly.
+            // The taker is the incoming order; the maker is the resting order.
+            const takerOrder = req.order;
+            // Build a minimal maker-order shape so consumeFunds knows the market
+            const makerOrder: Order = { ...takerOrder, userId: trade.makerUserId };
+            this.balanceEngine.consumeFunds(trade, makerOrder, takerOrder);
+        }
+
         if (executedTrades.length === 0) return;
         trades.push(...executedTrades);
 
         // Calculate filled quantity from executed trades
         const filledQuantity = executedTrades.reduce((acc, trade) => acc + trade.quantity, 0);
+
+        // Release any unmatched locked funds for market orders
+        const remainingQty = (req.order.remainingQuantity ?? req.order.quantity) - filledQuantity;
+        if (remainingQty > 0 && req.order.type === 'market') {
+            this.balanceEngine.releaseFunds(req.order, remainingQty);
+        }
 
         // Registers SL and TP with filled quantity only
         if (filledQuantity > 0 && req.bracket) {

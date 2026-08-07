@@ -2,6 +2,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import bcrypt from 'bcrypt';
 import { prisma } from '../../db/prisma.js';
 import type { RegisterInput, LoginInput } from '../validators/user.schema.js';
+import engine from '../engine.js';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -46,6 +47,9 @@ export const register = async (
 
     const token = setAuthCookieAndToken(req, reply, user.id, user.email);
 
+    // Seed default asset balances in DB and in-memory engine
+    await engine.upsertUserBalancesDb(user.id);
+
     return reply.status(201).send({
         success: true,
         message: 'Account created successfully.',
@@ -81,6 +85,9 @@ export const login = async (
     }
 
     const token = setAuthCookieAndToken(req, reply, user.id, user.email);
+
+    // Refresh in-memory balances from DB on every login
+    await engine.upsertUserBalancesDb(user.id);
 
     return reply.status(200).send({
         success: true,

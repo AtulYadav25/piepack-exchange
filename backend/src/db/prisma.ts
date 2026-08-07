@@ -2,8 +2,6 @@ import 'dotenv/config';
 import { PrismaClient } from '../generated/prisma/index.js';
 import { PrismaPg } from '@prisma/adapter-pg';
 
-// Prisma v7 requires a driver adapter for database connections.
-// PrismaPg wraps the pg pool and provides the connection to PrismaClient.
 const adapter = new PrismaPg({
     connectionString: process.env['DATABASE_URL']!,
 });
