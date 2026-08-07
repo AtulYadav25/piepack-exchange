@@ -1,12 +1,13 @@
 import dotenv from 'dotenv'
-
 import z from 'zod';
 
 dotenv.config();
 
 const envSchema = z.object({
     NODE_ENV: z.enum(['PRODUCTION', 'DEVELOPMENT']),
-    PORT: z.string().default('3000')
+    PORT: z.string().default('3000'),
+    DATABASE_URL: z.string().url(),
+    JWT_SECRET: z.string().min(16).default('supersecret_change_me_in_production_please'),
 });
 
 const _env = envSchema.safeParse(process.env);

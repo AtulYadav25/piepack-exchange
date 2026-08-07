@@ -8,7 +8,6 @@ export const OrderStatusSchema = z.enum(['open', 'partially_filled', 'filled', '
 export const TriggerDirectionSchema = z.enum(['ABOVE', 'BELOW']);
 export const TriggerTypeSchema = z.enum(['stoploss', 'takeprofit']);
 
-
 export const OrderSchema = z.object({
     id: z.string().optional(),
     userId: z.string().min(1),

@@ -1,0 +1,24 @@
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: tradeapp_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-tradeapp}
+      # Allow connections without password for local dev (overrides scram-sha-256)
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    volumes:
+      - tradeapp_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-tradeapp}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  tradeapp_pgdata:
+    driver: local
