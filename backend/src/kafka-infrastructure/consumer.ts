@@ -35,7 +35,7 @@ const bulkInsertOrders = async (events: Event<OrderEventPayload>[]): Promise<voi
   });
 
   const queryText = `
-    INSERT INTO kafka_orders (
+    INSERT INTO orders (
       event_id, order_id, user_id, market, side, type, price, quantity, remaining_quantity, status, event_type, timestamp
     )
     VALUES ${valueStrings.join(", ")}
@@ -43,7 +43,7 @@ const bulkInsertOrders = async (events: Event<OrderEventPayload>[]): Promise<voi
   `;
 
   await tsPool.query(queryText, values);
-  console.log(`[Kafka Consumer DB] Bulk inserted ${events.length} order events into kafka_orders.`);
+  console.log(`[Kafka Consumer DB] Bulk inserted ${events.length} order events into orders table.`);
 };
 
 const bulkInsertTrades = async (events: Event<TradeEventPayload>[]): Promise<void> => {
@@ -73,7 +73,7 @@ const bulkInsertTrades = async (events: Event<TradeEventPayload>[]): Promise<voi
   });
 
   const queryText = `
-    INSERT INTO kafka_trades (
+    INSERT INTO trades (
       event_id, trade_id, market, price, quantity, maker_order_id, taker_order_id, maker_user_id, taker_user_id, event_type, timestamp
     )
     VALUES ${valueStrings.join(", ")}
@@ -81,7 +81,7 @@ const bulkInsertTrades = async (events: Event<TradeEventPayload>[]): Promise<voi
   `;
 
   await tsPool.query(queryText, values);
-  console.log(`[Kafka Consumer DB] Bulk inserted ${events.length} trade events into kafka_trades hypertable.`);
+  console.log(`[Kafka Consumer DB] Bulk inserted ${events.length} trade events into trades hypertable.`);
 };
 
 const bulkInsertBalances = async (events: Event<BalanceEventPayload>[]): Promise<void> => {
@@ -108,7 +108,7 @@ const bulkInsertBalances = async (events: Event<BalanceEventPayload>[]): Promise
   });
 
   const queryText = `
-    INSERT INTO kafka_balance_events (
+    INSERT INTO balance_events (
       event_id, user_id, asset, available, locked, amount, event_type, timestamp
     )
     VALUES ${valueStrings.join(", ")}
@@ -116,7 +116,7 @@ const bulkInsertBalances = async (events: Event<BalanceEventPayload>[]): Promise
   `;
 
   await tsPool.query(queryText, values);
-  console.log(`[Kafka Consumer DB] Bulk inserted ${events.length} balance events into kafka_balance_events.`);
+  console.log(`[Kafka Consumer DB] Bulk inserted ${events.length} balance events into balance_events table.`);
 };
 
 // ─── Batch Processor ──────────────────────────────────────────────────────────
