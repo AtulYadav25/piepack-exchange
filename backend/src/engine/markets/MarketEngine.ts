@@ -3,6 +3,12 @@ import { OrderBook } from "./OrderBook.js";
 import { TriggerEngine } from "./TriggerEngine.js";
 import { trades } from "../MemoryDb.js";
 import type { BalanceEngine } from "../balances/balanceEngine.js";
+import {
+    produceTradeEvent,
+    produceOrderEvent,
+    TRADE_EVENT_TYPES,
+    ORDER_EVENT_TYPES,
+} from "../../kafka-infrastructure/index.js";
 
 export class MarketEngine {
 
@@ -27,18 +33,46 @@ export class MarketEngine {
             executedTrades = this.orderBook.addMarketOrder(req.order);
         }
 
-        // Consume funds for each matched trade (partial fills included)
+        // Consume funds & produce TRADE_EXECUTED events for each matched trade
         for (const trade of executedTrades) {
-            // We need both sides of the trade to update balances correctly.
-            // The taker is the incoming order; the maker is the resting order.
             const takerOrder = req.order;
-            // Build a minimal maker-order shape so consumeFunds knows the market
             const makerOrder: Order = { ...takerOrder, userId: trade.makerUserId };
             this.balanceEngine.consumeFunds(trade, makerOrder, takerOrder);
+
+            // Produce TRADE_EXECUTED event to Kafka
+            produceTradeEvent(TRADE_EVENT_TYPES.EXECUTED, {
+                tradeId: trade.id,
+                market: trade.market,
+                price: trade.price,
+                quantity: trade.quantity,
+                makerOrderId: trade.makerOrderId,
+                takerOrderId: trade.takerOrderId,
+                makerUserId: trade.makerUserId,
+                takerUserId: trade.takerUserId,
+                executedAt: trade.executedAt,
+            }).catch((err) => console.error("Failed to produce TRADE_EXECUTED event:", err));
+        }
+
+        if (executedTrades.length > 0) {
+            trades.push(...executedTrades);
+
+            // Produce ORDER_FILLED or ORDER_PARTIALLY_FILLED event for taker order
+            const remaining = req.order.remainingQuantity ?? 0;
+            const eventType = remaining === 0 ? ORDER_EVENT_TYPES.FILLED : ORDER_EVENT_TYPES.PARTIALLY_FILLED;
+            produceOrderEvent(eventType, {
+                orderId: req.order.id || crypto.randomUUID(),
+                userId: req.userId,
+                market: req.market,
+                side: req.order.side,
+                type: req.order.type,
+                price: req.order.price,
+                quantity: req.order.quantity,
+                remainingQuantity: remaining,
+                status: remaining === 0 ? 'filled' : 'partially_filled',
+            }).catch((err) => console.error("Failed to produce order status event:", err));
         }
 
         if (executedTrades.length === 0) return;
-        trades.push(...executedTrades);
 
         // Calculate filled quantity from executed trades
         const filledQuantity = executedTrades.reduce((acc, trade) => acc + trade.quantity, 0);
@@ -80,8 +114,6 @@ export class MarketEngine {
         this.processTriggers(oldPrice, newPrice);
     }
 
-    //Big Exchanges use way better process thn this, Red-Black Tree,  Min/Max Heaps.
-    //These Exchanges run a dedicated machine for pair like BTC (FROM GEMINI)
     private processTriggers(initialOldPrice: number, initialNewPrice: number): void {
         let oldPrice = initialOldPrice;
         let newPrice = initialNewPrice;
@@ -122,10 +154,23 @@ export class MarketEngine {
                 if (newTrades.length > 0) {
                     trades.push(...newTrades);
                     this.currentPrice = newTrades.at(-1)!.price;
+
+                    for (const trade of newTrades) {
+                        produceTradeEvent(TRADE_EVENT_TYPES.EXECUTED, {
+                            tradeId: trade.id,
+                            market: trade.market,
+                            price: trade.price,
+                            quantity: trade.quantity,
+                            makerOrderId: trade.makerOrderId,
+                            takerOrderId: trade.takerOrderId,
+                            makerUserId: trade.makerUserId,
+                            takerUserId: trade.takerUserId,
+                            executedAt: trade.executedAt,
+                        }).catch((err) => console.error("Failed to produce TRADE_EXECUTED event:", err));
+                    }
                 }
             }
 
-            // Update prices for next iteration to handle cascading triggers
             oldPrice = priceBeforeExecution;
             newPrice = this.currentPrice;
         }

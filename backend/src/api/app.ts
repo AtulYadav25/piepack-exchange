@@ -49,4 +49,7 @@ app.register(authRoutes, { prefix: "/api/v1/auth" });
 // Order routes (protected via preHandler inside orderRoutes)
 app.register(orderRoutes, { prefix: "/api/v1/order" });
 
+//Chart Routes
+
+
 export default app;

@@ -7,6 +7,7 @@ const envSchema = z.object({
     NODE_ENV: z.enum(['PRODUCTION', 'DEVELOPMENT']),
     PORT: z.string().default('3000'),
     DATABASE_URL: z.string().url(),
+    KAFKA_BROKERS: z.string().default('localhost:9092'),
     JWT_SECRET: z.string().min(16).default('supersecret_change_me_in_production_please'),
 });
 

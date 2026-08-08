@@ -2,7 +2,8 @@ import type { Market } from "./config.js";
 import { SUPPORTED_MARKETS } from "./config.js";
 import { BalanceEngine } from "./balances/balanceEngine.js";
 import { MarketEngine } from "./markets/MarketEngine.js";
-import type { PlaceOrderRequest, Trade } from "./types.js";
+import type { PlaceOrderRequest } from "./types.js";
+import { produceOrderEvent, ORDER_EVENT_TYPES } from "../kafka-infrastructure/index.js";
 
 
 export class ExchangeEngine {
@@ -15,8 +16,6 @@ export class ExchangeEngine {
             this.markets.set(m, new MarketEngine(m, this.balanceEngine));
         }
     }
-
-    // ── Balance management ─────────────────────────────────────────────────
 
     /**
      * Seed default asset balances for a user.
@@ -55,13 +54,38 @@ export class ExchangeEngine {
         // 3. Lock the required funds before sending to the order book
         this.balanceEngine.lockFunds(req.order);
 
-        // 4. Send to market engine (funds are consumed inside on match)
+        // 4. Produce ORDER_CREATED event
+        produceOrderEvent(ORDER_EVENT_TYPES.CREATED, {
+            orderId: req.order.id || crypto.randomUUID(),
+            userId: req.userId,
+            market: req.market,
+            side: req.order.side,
+            type: req.order.type,
+            price: req.order.price,
+            quantity: req.order.quantity,
+            remainingQuantity: req.order.remainingQuantity ?? req.order.quantity,
+            status: req.order.status || 'open',
+        }).catch((err) => console.error("Failed to produce ORDER_CREATED event:", err));
+
+        // 5. Send to market engine (funds are consumed inside on match)
         market.placeUserOrder(req);
 
-        // 5. Asynchronously flush dirty balances to DB (non-blocking)
+        // 6. Asynchronously flush dirty balances to DB (non-blocking)
         this.balanceEngine.flushToDb().catch((err) =>
             console.error("Failed to flush balances to DB:", err)
         );
+    }
+
+    cancelOrder(userId: string, marketSymbol: Market, orderId: string): void {
+        produceOrderEvent(ORDER_EVENT_TYPES.CANCELLED, {
+            orderId,
+            userId,
+            market: marketSymbol,
+            side: 'buy', // placeholder
+            type: 'limit', // placeholder
+            quantity: 0,
+            status: 'cancelled',
+        }).catch((err) => console.error("Failed to produce ORDER_CANCELLED event:", err));
     }
 
 }

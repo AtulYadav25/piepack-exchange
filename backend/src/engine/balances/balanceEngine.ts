@@ -2,25 +2,20 @@ import { ALL_ASSETS, DEFAULT_BALANCES, getMarketAssets } from '../config.js';
 import type { Asset } from '../config.js';
 import type { Order, Trade } from '../types.js';
 import { prisma } from '../../db/prisma.js';
-
-// ─── Types ────────────────────────────────────────────────────────────────────
+import { produceBalanceEvent, BALANCE_EVENT_TYPES } from '../../kafka-infrastructure/index.js';
 
 export interface Balance {
     available: number;
-    locked:    number;
+    locked: number;
 }
 
 /** In-memory snapshot of every user's asset balances */
 type BalanceMap = Map<string, Map<Asset, Balance>>;
 
-// ─── Engine ───────────────────────────────────────────────────────────────────
-
 export class BalanceEngine {
 
     private balances: BalanceMap = new Map();
     private dirtyUsers: Set<string> = new Set();
-
-    // ── Initialisation ──────────────────────────────────────────────────────
 
     /**
      * Synchronous in-memory seed (called when initializing memory state).
@@ -36,7 +31,7 @@ export class BalanceEngine {
             if (!userBalances.has(asset)) {
                 userBalances.set(asset, {
                     available: DEFAULT_BALANCES[asset],
-                    locked:    0,
+                    locked: 0,
                 });
             }
         }
@@ -126,8 +121,6 @@ export class BalanceEngine {
         }
     }
 
-    // ── Read ────────────────────────────────────────────────────────────────
-
     /** Returns a snapshot of all balances for a user (throws if unknown). */
     getUserBalances(userId: string): Map<Asset, Balance> {
         const userBalances = this.balances.get(userId);
@@ -141,8 +134,6 @@ export class BalanceEngine {
         if (!b) throw new Error(`Asset ${asset} not found for user ${userId}`);
         return b;
     }
-
-    // ── Fund lifecycle ──────────────────────────────────────────────────────
 
     /**
      * Validate that the user has enough available funds for the order.
@@ -163,7 +154,7 @@ export class BalanceEngine {
             if (price == null) return;
 
             const required = price * quantity;
-            const balance  = this.getBalance(userId, quote);
+            const balance = this.getBalance(userId, quote);
 
             if (balance.available < required) {
                 throw new Error(
@@ -181,37 +172,47 @@ export class BalanceEngine {
         }
     }
 
-    /**
-     * Move funds from `available` → `locked` before sending the order to the
-     * market engine.
-     */
     lockFunds(order: Order): void {
         const { userId, market, side, price, quantity } = order;
 
         this.ensureUser(userId);
 
         const [base, quote] = getMarketAssets(market as any);
+        let targetAsset: Asset;
+        let amount = 0;
 
         if (side === 'buy') {
             if (price == null) return; // market buy – nothing to pre-lock
-            const amount  = price * quantity;
+            amount = price * quantity;
+            targetAsset = quote;
             const balance = this.getBalance(userId, quote);
             balance.available -= amount;
-            balance.locked    += amount;
+            balance.locked += amount;
         } else {
+            amount = quantity;
+            targetAsset = base;
             const balance = this.getBalance(userId, base);
             balance.available -= quantity;
-            balance.locked    += quantity;
+            balance.locked += quantity;
         }
 
         this.dirtyUsers.add(userId);
+
+        const bal = this.getBalance(userId, targetAsset);
+        produceBalanceEvent(BALANCE_EVENT_TYPES.RESERVED, {
+            userId,
+            asset: targetAsset,
+            available: bal.available,
+            locked: bal.locked,
+            amount,
+        }).catch((err) => console.error("Failed to produce BALANCE_RESERVED event:", err));
     }
 
     /**
-     * Consume exactly the matched amount from the `locked` bucket after a trade.
-     * - maker (sell) → deduct base from locked, credit quote available
-     * - taker (buy)  → deduct quote from locked, credit base available
-     */
+     Consume exactly the matched amount from the locked bucket after a trade.
+     - maker (sell) → deduct base from locked, credit quote available
+     - taker (buy)  → deduct quote from locked, credit base available
+    */
     consumeFunds(trade: Trade, makerOrder: Order, takerOrder: Order): void {
         const [base, quote] = getMarketAssets(trade.market as any);
 
@@ -220,27 +221,55 @@ export class BalanceEngine {
 
         // Maker is always a sell (resting limit order on the ask side)
         const makerBalance = this.getUserBalances(makerUserId);
-        const makerBase    = makerBalance.get(base)!;
-        const makerQuote   = makerBalance.get(quote)!;
+        const makerBase = makerBalance.get(base)!;
+        const makerQuote = makerBalance.get(quote)!;
 
-        makerBase.locked    -= quantity;   // locked base consumed
+        makerBase.locked -= quantity;   // locked base consumed
         makerQuote.available += quoteAmount; // receive quote
 
         // Taker is always a buy (incoming order hitting the book)
         const takerBalance = this.getUserBalances(takerUserId);
-        const takerBase    = takerBalance.get(base)!;
-        const takerQuote   = takerBalance.get(quote)!;
+        const takerBase = takerBalance.get(base)!;
+        const takerQuote = takerBalance.get(quote)!;
 
-        takerQuote.locked   -= quoteAmount; // locked quote consumed
+        takerQuote.locked -= quoteAmount; // locked quote consumed
         takerBase.available += quantity;    // receive base
 
         this.dirtyUsers.add(makerUserId);
         this.dirtyUsers.add(takerUserId);
+
+        produceBalanceEvent(BALANCE_EVENT_TYPES.CHANGED, {
+            userId: makerUserId,
+            asset: base,
+            available: makerBase.available,
+            locked: makerBase.locked,
+        }).catch((err) => console.error("Failed to produce maker base BALANCE_CHANGED event:", err));
+
+        produceBalanceEvent(BALANCE_EVENT_TYPES.CHANGED, {
+            userId: makerUserId,
+            asset: quote,
+            available: makerQuote.available,
+            locked: makerQuote.locked,
+        }).catch((err) => console.error("Failed to produce maker quote BALANCE_CHANGED event:", err));
+
+        produceBalanceEvent(BALANCE_EVENT_TYPES.CHANGED, {
+            userId: takerUserId,
+            asset: base,
+            available: takerBase.available,
+            locked: takerBase.locked,
+        }).catch((err) => console.error("Failed to produce taker base BALANCE_CHANGED event:", err));
+
+        produceBalanceEvent(BALANCE_EVENT_TYPES.CHANGED, {
+            userId: takerUserId,
+            asset: quote,
+            available: takerQuote.available,
+            locked: takerQuote.locked,
+        }).catch((err) => console.error("Failed to produce taker quote BALANCE_CHANGED event:", err));
     }
 
     /**
-     * Release all locked funds back to available (e.g. on order cancel or
-     * partial fill where remaining qty is unlocked).
+     Release all locked funds back to available (eg. on order cancel or
+     partial fill where remaining qty is unlocked).
      */
     releaseFunds(order: Order, amount?: number): void {
         const { userId, market, side, price, quantity, remainingQuantity } = order;
@@ -248,24 +277,34 @@ export class BalanceEngine {
         this.ensureUser(userId);
 
         const [base, quote] = getMarketAssets(market as any);
-        const releaseQty    = amount ?? remainingQuantity ?? quantity;
+        const releaseQty = amount ?? remainingQuantity ?? quantity;
+        let targetAsset: Asset;
 
         if (side === 'buy') {
             if (price == null) return;
-            const releaseAmount  = price * releaseQty;
-            const balance        = this.getBalance(userId, quote);
-            balance.locked      -= releaseAmount;
-            balance.available   += releaseAmount;
+            targetAsset = quote;
+            const releaseAmount = price * releaseQty;
+            const balance = this.getBalance(userId, quote);
+            balance.locked -= releaseAmount;
+            balance.available += releaseAmount;
         } else {
-            const balance       = this.getBalance(userId, base);
-            balance.locked     -= releaseQty;
-            balance.available  += releaseQty;
+            targetAsset = base;
+            const balance = this.getBalance(userId, base);
+            balance.locked -= releaseQty;
+            balance.available += releaseQty;
         }
 
         this.dirtyUsers.add(userId);
-    }
 
-    // ── Helpers ─────────────────────────────────────────────────────────────
+        const bal = this.getBalance(userId, targetAsset);
+        produceBalanceEvent(BALANCE_EVENT_TYPES.RELEASED, {
+            userId,
+            asset: targetAsset,
+            available: bal.available,
+            locked: bal.locked,
+            amount: releaseQty,
+        }).catch((err) => console.error("Failed to produce BALANCE_RELEASED event:", err));
+    }
 
     private ensureUser(userId: string): void {
         if (!this.balances.has(userId)) {
