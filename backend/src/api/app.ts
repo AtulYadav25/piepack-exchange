@@ -1,6 +1,7 @@
-import fastify from 'fastify'
+import cors from '@fastify/cors';
 import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod';
 import { config } from './config/env.js';
+import fastify from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { errorHandler } from './middlewares/errorHandler.js';
 import { jwtPlugin } from './plugins/jwt.js';
@@ -10,11 +11,10 @@ import { candleRoutes } from './routes/candleRoutes.js';
 
 const app = fastify({ logger: false });// TODO: Remove logger
 
-const allowedOrigins: string[] = []; // TODO : Add real domain in production
-
-if (config.NODE_ENV === 'PRODUCTION') {
-    allowedOrigins.push('localhost:5173')
-}
+app.register(cors, {
+    origin: ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000'],
+    credentials: true,
+});
 
 app.register(jwtPlugin);
 

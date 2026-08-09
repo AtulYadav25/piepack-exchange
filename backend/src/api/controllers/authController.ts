@@ -20,8 +20,6 @@ const setAuthCookieAndToken = (req: FastifyRequest, reply: FastifyReply, userId:
     return token;
 };
 
-// ─── Register ─────────────────────────────────────────────────────────────────
-
 export const register = async (
     req: FastifyRequest<{ Body: RegisterInput }>,
     reply: FastifyReply,
@@ -59,8 +57,6 @@ export const register = async (
         },
     });
 };
-
-// ─── Login ────────────────────────────────────────────────────────────────────
 
 export const login = async (
     req: FastifyRequest<{ Body: LoginInput }>,
@@ -102,8 +98,6 @@ export const login = async (
         },
     });
 };
-
-// ─── Logout ───────────────────────────────────────────────────────────────────
 
 export const logout = async (
     _req: FastifyRequest,
