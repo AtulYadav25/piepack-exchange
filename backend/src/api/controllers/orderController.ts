@@ -6,12 +6,16 @@ import engine from "../engine.js";
 export const placeOrder = async (req: FastifyRequest<{ Body: PlaceOrderRequest }>, reply: FastifyReply) => {
     try {
 
+        // Validate user - check JWT token
+        const user = req.user;
+        if (!user) {
+            return reply.status(401).send({ message: "Unauthorized" });
+        }
+
         const { market } = req.body;
         if (!market) {
             return reply.status(400).send({ message: "Invalid market" })
         }
-
-        // TODO : Validate User - Funds - User Tokens Available - Lock Funds for Order
 
         const result = engine.placeOrder(req.body);
 

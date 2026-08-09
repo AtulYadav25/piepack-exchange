@@ -6,7 +6,7 @@ export const CandleQuerySchema = z.object({
   interval: z.string().optional().default('1m'),
   startTime: z.string().optional(),
   endTime: z.string().optional(),
-  limit: z.coerce.number().min(1).max(1000).optional().default(100),
+  limit: z.coerce.number().min(1).max(2000).optional().default(200),
 });
 
 export type CandleQueryInput = z.infer<typeof CandleQuerySchema>;
