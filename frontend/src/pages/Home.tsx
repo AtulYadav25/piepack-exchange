@@ -3,9 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 import { Button } from '@/components/ui/button'
+import { useAuthState } from '../hooks/useAuth'
 
 const Home: React.FC = () => {
   const navigate = useNavigate()
+  const { isAuthenticated } = useAuthState()
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col justify-between font-sans">
@@ -23,12 +25,25 @@ const Home: React.FC = () => {
           </div>
 
           <div className="flex items-center justify-center gap-4 pt-4">
-            <Button variant="default" size="lg" onClick={() => navigate('/login')}>
-              Sign In
-            </Button>
-            <Button variant="outline" size="lg" onClick={() => navigate('/register')}>
-              Register
-            </Button>
+            {isAuthenticated ? (
+              <Button
+                variant="default"
+                size="lg"
+                className="px-8 font-medium"
+                onClick={() => navigate('/market')}
+              >
+                Start Trading
+              </Button>
+            ) : (
+              <>
+                <Button variant="default" size="lg" onClick={() => navigate('/login')}>
+                  Sign In
+                </Button>
+                <Button variant="outline" size="lg" onClick={() => navigate('/register')}>
+                  Register
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </main>
