@@ -16,6 +16,7 @@ function App() {
           <Route path="/register" element={<Register />} />
         </Route>
         <Route path="/market" element={<Market />} />
+        <Route path="/market/:symbol" element={<Market />} />
       </Routes>
     </Router>
   )

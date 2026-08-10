@@ -7,8 +7,7 @@ export const placeOrder = async (req: FastifyRequest<{ Body: PlaceOrderRequest }
     try {
 
         // Validate user - check JWT token
-        const user = req.user;
-        if (!user) {
+        if (!req.user || req.user.userId !== req.body.order.userId) {
             return reply.status(401).send({ message: "Unauthorized" });
         }
 
