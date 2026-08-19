@@ -119,7 +119,7 @@ const bulkInsertBalances = async (events: Event<BalanceEventPayload>[]): Promise
   console.log(`[Kafka Consumer DB] Bulk inserted ${events.length} balance events into balance_events table.`);
 };
 
-// ─── Batch Processor ──────────────────────────────────────────────────────────
+// Batch Processor
 
 const processBatch = async ({ batch, resolveOffset, heartbeat, isRunning, isStale }: EachBatchPayload): Promise<void> => {
   const orderEvents: Event<OrderEventPayload>[] = [];
@@ -162,7 +162,7 @@ const processBatch = async ({ batch, resolveOffset, heartbeat, isRunning, isStal
   await heartbeat();
 };
 
-// ─── Consumer Lifecycle ───────────────────────────────────────────────────────
+//Consumer Lifecycle
 
 export const startConsumer = async (): Promise<void> => {
   try {

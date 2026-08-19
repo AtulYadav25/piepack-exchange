@@ -9,6 +9,7 @@ import {
     TRADE_EVENT_TYPES,
     ORDER_EVENT_TYPES,
 } from "../../kafka-infrastructure/index.js";
+import { roomManager } from "../../ws/RoomManager.js";
 
 export class MarketEngine {
 
@@ -110,6 +111,9 @@ export class MarketEngine {
         const oldPrice = this.currentPrice;
         const newPrice = executedTrades.at(-1)?.price ?? this.currentPrice;
         this.currentPrice = newPrice;
+
+        // Broadcast real-time price tick to all WS subscribers of this market
+        roomManager.broadcastPriceTick(this.orderBook.market, newPrice);
 
         this.processTriggers(oldPrice, newPrice);
     }
