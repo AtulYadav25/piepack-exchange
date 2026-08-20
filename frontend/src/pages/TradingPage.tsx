@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
+import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 import { MarketHeader } from '../components/trading/MarketHeader'
 import { TradingChart } from '../components/trading/TradingChart'
@@ -14,6 +15,7 @@ import {
     MOCK_USER_ORDERS,
     type UserOrder,
 } from '../config/tradingMockData'
+import { useMarketSocket } from '../hooks/useMarketSocket'
 
 const TradingPage: React.FC = () => {
     const { symbol = 'btc-usdc' } = useParams<{ symbol: string }>()
@@ -25,24 +27,28 @@ const TradingPage: React.FC = () => {
     const baseAsset = activeMarket.baseAsset
     const quoteAsset = activeMarket.quoteAsset
 
-    // Initial mock prices
+    // Normalised market symbol for the WS room (e.g. 'btc-usdc' → 'BTC-USDC')
+    const wsSymbol = symbol.toUpperCase()
+
+    // Initial mock prices (fallback while no WS tick has arrived)
     let initialPrice = 64250.0
     if (baseAsset === 'ETH') initialPrice = 3450.0
     if (baseAsset === 'SOL') initialPrice = 145.0
 
-    const [currentPrice, setCurrentPrice] = useState<number>(initialPrice)
+    // Live price from WebSocket; falls back to initialPrice
+    const { price: livePrice } = useMarketSocket(wsSymbol)
+    const currentPrice = livePrice ?? initialPrice
+
     const [orderBook, setOrderBook] = useState(() => generateMockOrderBook(initialPrice))
     const [trades, setTrades] = useState(() => generateMockTrades(initialPrice))
     const [userOrders, setUserOrders] = useState<UserOrder[]>(MOCK_USER_ORDERS)
 
+    // Re-generate mock order book & trades when the market changes
     useEffect(() => {
-        let price = 64250.0
-        if (baseAsset === 'ETH') price = 3450.0
-        if (baseAsset === 'SOL') price = 145.0
-        setCurrentPrice(price)
-        setOrderBook(generateMockOrderBook(price))
-        setTrades(generateMockTrades(price))
-    }, [symbol, baseAsset])
+        setOrderBook(generateMockOrderBook(initialPrice))
+        setTrades(generateMockTrades(initialPrice))
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [symbol])
 
     const handlePlaceOrder = (newOrder: {
         side: 'BUY' | 'SELL'
@@ -72,7 +78,7 @@ const TradingPage: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col justify-between font-sans">
-            {/* <Navbar /> */}
+            <Navbar />
 
 
             <main className="flex-1 w-full px-2 py-3 sm:px-3 space-y-3">
