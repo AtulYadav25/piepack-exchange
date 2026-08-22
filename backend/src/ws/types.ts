@@ -14,6 +14,8 @@ export const WS_CLIENT_EVENTS = {
 
 export const WS_SERVER_EVENTS = {
   PRICE_TICK: 'PRICE_TICK',
+  ORDER_BOOK_SNAPSHOT: 'ORDER_BOOK_SNAPSHOT',
+  RECENT_TRADES: 'RECENT_TRADES',
   NOTIFICATION: 'NOTIFICATION',
   PONG: 'PONG',
   ERROR: 'ERROR',
@@ -37,6 +39,29 @@ export interface SubscribeMarketPayload {
 export interface PriceTickPayload {
   symbol: Market;
   price: number;
+}
+
+/** Each entry: [price, totalQuantity] — top N levels only */
+export type OrderBookLevel = [price: number, totalQty: number];
+
+export interface OrderBookSnapshotPayload {
+  symbol: Market;
+  bids: OrderBookLevel[];
+  asks: OrderBookLevel[];
+}
+
+export interface RecentTradePayload {
+  id: string;
+  market: Market;
+  price: number;
+  quantity: number;
+  side: 'buy' | 'sell';   // taker side
+  executedAt: number;
+}
+
+export interface RecentTradesPayload {
+  symbol: Market;
+  trades: RecentTradePayload[];
 }
 
 export interface NotificationPayload {

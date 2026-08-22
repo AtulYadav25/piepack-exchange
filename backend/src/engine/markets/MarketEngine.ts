@@ -10,6 +10,7 @@ import {
     ORDER_EVENT_TYPES,
 } from "../../kafka-infrastructure/index.js";
 import { roomManager } from "../../ws/RoomManager.js";
+import type { RecentTradePayload } from "../../ws/types.js";
 
 export class MarketEngine {
 
@@ -20,10 +21,27 @@ export class MarketEngine {
     currentPrice: number;
 
     constructor(symbol: string, balanceEngine: BalanceEngine) {
-        this.orderBook     = new OrderBook(symbol);
+        this.orderBook = new OrderBook(symbol);
         this.triggerEngine = new TriggerEngine(symbol);
         this.balanceEngine = balanceEngine;
-        this.currentPrice  = 10; // TODO : Lets get this price from the constructor arguments
+        this.currentPrice = 10; // TODO: get initial price from constructor args
+
+        // Register live-data providers so RoomManager can poll without circular deps
+        roomManager.registerProviders(this.orderBook.market, {
+            depth: () => this.orderBook.getDepth(7),
+            recentTrades: () =>
+                trades
+                    .filter((t) => t.market === this.orderBook.market)
+                    .slice(-20)
+                    .map((t): RecentTradePayload => ({
+                        id: t.id,
+                        market: t.market,
+                        price: t.price,
+                        quantity: t.quantity,
+                        side: 'buy', // taker side unknown at this level; MarketEngine will pass it directly
+                        executedAt: t.executedAt,
+                    })),
+        });
     }
 
     placeUserOrder(req: PlaceOrderRequest): void {
@@ -74,6 +92,17 @@ export class MarketEngine {
         }
 
         if (executedTrades.length === 0) return;
+
+        // Broadcast new trades immediately to all WS subscribers
+        const wsTradePayloads: RecentTradePayload[] = executedTrades.map((t) => ({
+            id: t.id,
+            market: t.market,
+            price: t.price,
+            quantity: t.quantity,
+            side: req.order.side as 'buy' | 'sell',
+            executedAt: t.executedAt,
+        }));
+        roomManager.broadcastRecentTrades(this.orderBook.market, wsTradePayloads);
 
         // Calculate filled quantity from executed trades
         const filledQuantity = executedTrades.reduce((acc, trade) => acc + trade.quantity, 0);

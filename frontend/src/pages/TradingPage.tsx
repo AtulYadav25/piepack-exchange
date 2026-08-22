@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useMemo, useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
@@ -10,12 +10,42 @@ import { TradeForm } from '../components/trading/TradeForm'
 import { UserOrders } from '../components/trading/UserOrders'
 import { cryptoMarkets } from '../config/markets'
 import {
-    generateMockOrderBook,
-    generateMockTrades,
-    MOCK_USER_ORDERS,
+    type OrderBookEntry,
+    type RecentTrade as MockRecentTrade,
     type UserOrder,
 } from '../config/tradingMockData'
-import { useMarketSocket } from '../hooks/useMarketSocket'
+import { useMarketSocket, type OrderBookLevel, type RecentTrade as WsTrade } from '../hooks/useMarketSocket'
+
+// Adapters: WS shapes → component shapes
+
+/*
+Convert WS [price, totalQty][] into OrderBookEntry[] with running cumulative totals.
+bids: highest price first; asks: lowest price first (server already sorts this way).
+*/
+function adaptOrderBookLevels(levels: OrderBookLevel[]): OrderBookEntry[] {
+    let runningTotal = 0
+    return levels.map(([price, size]) => {
+        runningTotal += size
+        return { price, size, total: runningTotal }
+    })
+}
+
+// Convert a WS RecentTrade into the component's RecentTrade shape
+function adaptWsTrade(t: WsTrade): MockRecentTrade {
+    return {
+        id: t.id,
+        price: t.price,
+        size: t.quantity,
+        side: t.side,
+        time: new Date(t.executedAt).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+        }),
+    }
+}
+
+// Page
 
 const TradingPage: React.FC = () => {
     const { symbol = 'btc-usdc' } = useParams<{ symbol: string }>()
@@ -35,21 +65,36 @@ const TradingPage: React.FC = () => {
     if (baseAsset === 'ETH') initialPrice = 3450.0
     if (baseAsset === 'SOL') initialPrice = 145.0
 
-    // Live price from WebSocket; falls back to initialPrice
-    const { price: livePrice } = useMarketSocket(wsSymbol)
+    //Live data from WebSocket
+    const { price: livePrice, orderBook: wsOrderBook, recentTrades: wsRecentTrades } = useMarketSocket(wsSymbol)
+
     const currentPrice = livePrice ?? initialPrice
 
-    const [orderBook, setOrderBook] = useState(() => generateMockOrderBook(initialPrice))
-    const [trades, setTrades] = useState(() => generateMockTrades(initialPrice))
-    const [userOrders, setUserOrders] = useState<UserOrder[]>(MOCK_USER_ORDERS)
+    // Mock fallbacks (shown before first WS data arrives)
+    const [userOrders, setUserOrders] = useState<UserOrder[]>([])
 
-    // Re-generate mock order book & trades when the market changes
-    useEffect(() => {
-        setOrderBook(generateMockOrderBook(initialPrice))
-        setTrades(generateMockTrades(initialPrice))
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [symbol])
+    // Adapt WS orderbook → component shape (memoised)
+    const liveAsks = useMemo(
+        () => wsOrderBook ? adaptOrderBookLevels(wsOrderBook.asks) : null,
+        [wsOrderBook],
+    )
+    const liveBids = useMemo(
+        () => wsOrderBook ? adaptOrderBookLevels(wsOrderBook.bids) : null,
+        [wsOrderBook],
+    )
 
+    // Use live data when available, fall back to mock
+    const displayAsks = liveAsks ?? []
+    const displayBids = liveBids ?? []
+
+    //Adapt WS trades → component shape (memoised)
+    const liveTradesAdapted = useMemo(
+        () => wsRecentTrades.length > 0 ? wsRecentTrades.map(adaptWsTrade) : null,
+        [wsRecentTrades],
+    )
+    const displayTrades = liveTradesAdapted ?? []
+
+    // Order handlers
     const handlePlaceOrder = (newOrder: {
         side: 'BUY' | 'SELL'
         price: number
@@ -80,7 +125,6 @@ const TradingPage: React.FC = () => {
         <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col justify-between font-sans">
             <Navbar />
 
-
             <main className="flex-1 w-full px-2 py-3 sm:px-3 space-y-3">
                 {/* Top Market Bar */}
                 <MarketHeader symbol={symbol} currentPrice={currentPrice} />
@@ -92,23 +136,23 @@ const TradingPage: React.FC = () => {
                         <TradingChart symbol={symbol} />
                     </div>
 
-                    {/* Middle Column: Sell Orders, Buy Orders, All Trades (20% width) */}
+                    {/* Middle Column: Order Book + Recent Trades (20% width) */}
                     <div className="w-full lg:w-[20%] flex flex-col space-y-3">
                         <div className="flex-1 min-h-[290px]">
                             <OrderBook
-                                asks={orderBook.asks}
-                                bids={orderBook.bids}
+                                asks={displayAsks}
+                                bids={displayBids}
                                 currentPrice={currentPrice}
                                 baseAsset={baseAsset}
                                 quoteAsset={quoteAsset}
                             />
                         </div>
                         <div className="h-[210px]">
-                            <RecentTrades trades={trades} baseAsset={baseAsset} quoteAsset={quoteAsset} />
+                            <RecentTrades trades={displayTrades} baseAsset={baseAsset} quoteAsset={quoteAsset} />
                         </div>
                     </div>
 
-                    {/* Right Column: Buy / Sell Form Panel (20% width) */}
+                    {/* Right Column: Buy / Sell Form (20% width) */}
                     <div className="w-full lg:w-[20%] flex flex-col min-h-[500px]">
                         <TradeForm
                             symbol={symbol}
