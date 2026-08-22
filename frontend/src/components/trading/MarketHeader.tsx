@@ -1,6 +1,7 @@
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { cryptoMarkets } from '../../config/markets'
+import { useCandleChart } from '@/src/hooks/useCandleChart'
 
 interface MarketHeaderProps {
   symbol: string
@@ -13,16 +14,20 @@ export const MarketHeader: React.FC<MarketHeaderProps> = ({ symbol, currentPrice
     (m) => m.symbol.toLowerCase() === symbol.toLowerCase()
   ) || cryptoMarkets[0]
 
+  const { candles } = useCandleChart(symbol, "1m");
+
   const baseAsset = activeMarket.baseAsset
   const quoteAsset = activeMarket.quoteAsset
   const formattedSymbol = activeMarket.symbol
 
-  // Mock 24h stats based on price
-  const changePercent = +2.45
-  const isPositive = changePercent >= 0
-  const high24h = (currentPrice * 1.032).toFixed(2)
-  const low24h = (currentPrice * 0.975).toFixed(2)
-  const volume24h = (12485.42).toLocaleString()
+  // Calculate 24h stats based on price
+  const changePercent = candles.length > 0
+    ? (((currentPrice - candles[0].open) / candles[0].open) * 100).toFixed(2)
+    : '0.00'
+  const isPositive = parseFloat(changePercent) >= 0
+  const high24h = candles.length > 0 ? Math.max(...candles.map((c) => c.high)).toFixed(2) : '0.00'
+  const low24h = candles.length > 0 ? Math.min(...candles.map((c) => c.low)).toFixed(2) : '0.00'
+  const volume24h = (candles.reduce((vol, curVol) => vol + curVol.volume, 0) * currentPrice).toLocaleString()
 
   return (
     <div className="bg-zinc-950 border border-zinc-800/80 rounded-xl p-4 flex flex-wrap items-center justify-between gap-4">
