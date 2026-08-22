@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react'
+import React, { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
@@ -48,7 +48,7 @@ function adaptWsTrade(t: WsTrade): MockRecentTrade {
 // Page
 
 const TradingPage: React.FC = () => {
-    const { symbol = 'btc-usdc' } = useParams<{ symbol: string }>()
+    const { symbol = 'BTC-USDC' } = useParams<{ symbol: string }>()
 
     const activeMarket =
         cryptoMarkets.find((m) => m.symbol.toLowerCase() === symbol.toLowerCase()) ||

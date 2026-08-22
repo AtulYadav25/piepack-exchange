@@ -2,6 +2,7 @@
 Singleton WebSocket client with:
 - Auto-reconnect with exponential back-off
 - Typed message routing via on(type, handler)
+- onConnected() hook for re-subscription after reconnects
 - One shared connection for the entire app
  */
 
@@ -27,6 +28,10 @@ const MAX_RECONNECT_DELAY_MS = 30_000;
 // Map of eventType → Set of handlers
 const listeners = new Map<string, Set<MessageHandler<any>>>();
 
+// Callbacks fired on every successful (re)connection — used for re-subscription
+type ConnectHandler = () => void;
+const connectHandlers = new Set<ConnectHandler>();
+
 // Queue messages that arrive before the socket is open
 const sendQueue: string[] = [];
 
@@ -43,6 +48,11 @@ function connect(): void {
     // Flush any queued messages
     while (sendQueue.length > 0) {
       socket!.send(sendQueue.shift()!);
+    }
+
+    // Notify all registered connect handlers so hooks can re-subscribe.
+    for (const h of connectHandlers) {
+      h();
     }
   };
 
@@ -80,7 +90,7 @@ function connect(): void {
 
 // Public API
 
-//Register a handler for a specific message type. Returns an unsubscribe fn.
+// Register a handler for a specific message type. Returns an unsubscribe fn.
 export function on<T = unknown>(type: string, handler: MessageHandler<T>): () => void {
   if (!listeners.has(type)) {
     listeners.set(type, new Set());
@@ -89,6 +99,23 @@ export function on<T = unknown>(type: string, handler: MessageHandler<T>): () =>
 
   return () => {
     listeners.get(type)?.delete(handler as MessageHandler);
+  };
+}
+
+/**
+ * Register a callback that fires on every successful WS connection (including
+ * reconnections). If the socket is already open when this is called, the
+ * callback fires immediately so the caller doesn't miss the current session.
+ * Returns an unregister function — call it in your useEffect cleanup.
+ */
+export function onConnected(handler: ConnectHandler): () => void {
+  connectHandlers.add(handler);
+  // Fire immediately if socket is already open (avoids a missed-connection window)
+  if (socket?.readyState === WebSocket.OPEN) {
+    handler();
+  }
+  return () => {
+    connectHandlers.delete(handler);
   };
 }
 
