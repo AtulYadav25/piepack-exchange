@@ -44,6 +44,11 @@ export class MarketEngine {
         });
     }
 
+    /** Returns all resting orders for a given user in this market. */
+    getOpenOrders(userId: string) {
+        return this.orderBook.getOpenOrdersByUser(userId);
+    }
+
     placeUserOrder(req: PlaceOrderRequest): void {
         let executedTrades: Trade[] = [];
         if (req.order.type === 'limit') {

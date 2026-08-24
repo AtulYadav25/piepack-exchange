@@ -8,10 +8,10 @@ export type Asset = (typeof ALL_ASSETS)[number];
 
 /** Default balance credited to new users (demo / paper-trading) */
 export const DEFAULT_BALANCES: Record<Asset, number> = {
-    BTC:  1,
-    ETH:  10,
-    SOL:  100,
-    USDC: 10_000,
+    BTC: 10,
+    ETH: 100,
+    SOL: 1000,
+    USDC: 100000,
 };
 
 /** Returns the base and quote assets for a given market symbol, e.g. "BTC-USDC" → ["BTC", "USDC"] */

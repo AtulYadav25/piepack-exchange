@@ -70,8 +70,6 @@ export class OrderBook {
 
             const trades = this.matchAgainstBook(order);
 
-            console.log("Trades: ", trades)
-
             return trades;
 
             // this.lastPrice = trades[trades.length - 1].price;
@@ -84,7 +82,6 @@ export class OrderBook {
             };
 
             const trades = this.matchAgainstBook(order);
-            console.log("Trades: ", trades)
 
             return trades;
         }
@@ -112,7 +109,6 @@ export class OrderBook {
         return true;
     }
 
-    //Aahh!
     getSpread(): number | undefined {
         if (this.bestBid !== null && this.bestAsk !== null) {
             return this.bestAsk - this.bestBid;
@@ -144,6 +140,16 @@ export class OrderBook {
         const allBids = Array.from(this.bids.values()).flat();
         const allAsks = Array.from(this.asks.values()).flat();
         return { bids: allBids, asks: allAsks };
+    }
+
+    getOpenOrdersByUser(userId: string): Order[] {
+        const result: Order[] = [];
+        for (const order of this.orderIndex.values()) {
+            if (order.userId === userId) {
+                result.push(order);
+            }
+        }
+        return result;
     }
 
     private updateBestPrices(): void {

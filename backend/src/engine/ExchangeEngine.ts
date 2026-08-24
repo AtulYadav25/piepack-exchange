@@ -76,6 +76,10 @@ export class ExchangeEngine {
         );
     }
 
+    getOpenOrders(userId: string, market: Market) {
+        return this.markets.get(market)?.getOpenOrders(userId) ?? [];
+    }
+
     cancelOrder(userId: string, marketSymbol: Market, orderId: string): void {
         produceOrderEvent(ORDER_EVENT_TYPES.CANCELLED, {
             orderId,
