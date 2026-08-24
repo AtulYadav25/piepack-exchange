@@ -1,7 +1,6 @@
-<div align="center" style="display:flex; flex-wrap:wrap; justify-content:center; gap:8px;">
-  <img src="https://i.ibb.co/fYNLFWy8/image.png" alt="image" border="0" style="width:50%; min-width:280px; flex:1 1 280px;" />
-  <img src="https://i.ibb.co/kVm1PhVt/Screenshot-873.png" alt="PiePack Exchange" style="width:50%; min-width:280px; flex:1 1 280px;" />
-</div>
+<p align="center">
+  <img src="https://i.ibb.co/fYNLFWy8/image.png" alt="image" width="100%" />
+</p>
 
 <h1 align="center">PiePack Exchange</h1>
 
@@ -20,6 +19,10 @@ Every fill, cancellation, and balance change is published to **Kafka** topics an
 A **Trigger Engine** handles Stop-Loss and Take-Profit orders using OCO (One-Cancels-the-Other) logic, activating conditional orders the moment price crosses their trigger level.
 
 Three markets are supported: **BTC-USDC**, **ETH-USDC**, and **SOL-USDC**. New users are seeded with paper balances (10 BTC, 100 ETH, 1000 SOL, 100,000 USDC) to start trading immediately. A standalone **TradeBot** process simulates realistic market activity — it subscribes to the live WS price feed, flips between randomised bullish/bearish sentiment phases, and fires limit orders every 500–1200 ms to keep order books full and spreads tight.
+
+<p align="center">
+  <img src="https://i.ibb.co/kVm1PhVt/Screenshot-873.png" alt="PiePack Exchange" width="100%" />
+</p>
 
 ---
 
