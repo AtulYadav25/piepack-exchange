@@ -14,7 +14,7 @@
 
 PiePack Exchange is a paper-trading spot exchange built from scratch. Clients connect via WebSocket to receive live **price ticks**, **order book snapshots (depth 7)**, and **recent trades** as they execute. Orders are validated, funds locked, and matched in-memory by a custom price-time-priority order book. 
 
-Every fill, cancellation, and balance change is published to **Kafka** topics and consumed asynchronously by a batch consumer that persists events into **TimescaleDB** hypertables. 
+Every fill, cancellation, and balance change is published to **Kafka** topics and consumed asynchronously by a batch consumer that persists events into **TimescaleDB** (`trades` hypertable, `orders`, and `balance_events` tables). 
 
 A **Trigger Engine** handles Stop-Loss and Take-Profit orders using OCO (One-Cancels-the-Other) logic, activating conditional orders the moment price crosses their trigger level.
 
@@ -55,7 +55,7 @@ Three markets are supported: **BTC-USDC**, **ETH-USDC**, and **SOL-USDC**. New u
 │                     │ consume batches                     │
 │  ┌──────────────────▼───────────────────────────────┐    │
 │  │              TimescaleDB (PostgreSQL)             │    │
-│  │  Hypertables: trades · orders · balance_events   │    │
+│  │  trades (hypertable) · orders · balance_events   │    │
 │  │  Candle OHLCV via time_bucket_gapfill()          │    │
 │  └──────────────────────────────────────────────────┘    │
 │                                                           │
@@ -89,7 +89,7 @@ Three markets are supported: **BTC-USDC**, **ETH-USDC**, and **SOL-USDC**. New u
 | **WebSocket Real-Time Feed** | Clients subscribe to market rooms and receive `PRICE_TICK`, `ORDER_BOOK_SNAPSHOT` (top 7 levels), and `RECENT_TRADES` pushed on every fill |
 | **Per-User Notification Channel** | `SUBSCRIBE_NOTIFICATIONS` subscribes a socket to a user-specific channel for server-push notifications (fill confirmations, errors) |
 | **Kafka Event Streaming** | Every order lifecycle event (CREATED → PARTIALLY_FILLED → FILLED / CANCELLED) and every TRADE_EXECUTED and BALANCE_CHANGED event is published to dedicated Kafka topics |
-| **Batch Consumer → TimescaleDB** | A KafkaJS batch consumer groups messages and bulk-inserts them idempotently into TimescaleDB hypertables using `ON CONFLICT DO NOTHING` |
+| **Batch Consumer → TimescaleDB** | A KafkaJS batch consumer groups messages and bulk-inserts them idempotently into TimescaleDB tables (`trades` hypertable, `orders`, `balance_events`) using `ON CONFLICT DO NOTHING` |
 | **OHLCV Candle API** | Candle data generated on-the-fly using `time_bucket_gapfill()` over the `trades` hypertable — supports 1m, 5m, 15m, 30m, 1h, 4h, 1d intervals |
 | **Balance Engine** | Funds are locked before an order enters the book and consumed on fill; unlocked on partial or full cancel. Balances sync to PostgreSQL via Prisma |
 | **Order History** | Reads latest event-per-order from TimescaleDB using `DISTINCT ON (order_id) ORDER BY timestamp DESC` |
@@ -106,16 +106,16 @@ Three markets are supported: **BTC-USDC**, **ETH-USDC**, and **SOL-USDC**. New u
 |---|---|
 | **Backend Framework** | Fastify 5, TypeScript, `fastify-type-provider-zod` |
 | **Auth** | `@fastify/jwt`, bcrypt |
-| **Validation** | Zod 4 |
+| **Validation** | Zod |
 | **In-Memory Engine** | Pure TypeScript — `ExchangeEngine`, `MarketEngine`, `OrderBook`, `TriggerEngine`, `BalanceEngine` |
 | **Message Broker** | Apache Kafka (KRaft mode, no ZooKeeper) via KafkaJS |
 | **Time-Series DB** | TimescaleDB (PostgreSQL 16) — raw `pg` pool, `time_bucket_gapfill` for candles |
 | **Relational DB** | PostgreSQL — Prisma ORM for users and balances |
 | **WebSocket** | `ws` library attached to the Fastify HTTP server |
-| **Frontend** | React 19, Vite 8, TypeScript, Tailwind CSS 4, shadcn/ui |
-| **Charts** | `lightweight-charts` v5 (TradingView) |
-| **Data Fetching** | TanStack Query v5 |
-| **Routing** | react-router-dom v7 |
+| **Frontend** | React 19, Vite, TypeScript, Tailwind CSS, shadcn/ui |
+| **Charts** | `lightweight-charts` (TradingView) |
+| **Data Fetching** | TanStack Query |
+| **Routing** | react-router-dom |
 | **Icons / Fonts** | Phosphor Icons, IBM Plex Sans, Space Grotesk |
 | **DevOps** | Docker Compose (TimescaleDB + Kafka in KRaft mode) |
 | **Package Manager** | pnpm (workspace monorepo) |
@@ -130,9 +130,9 @@ tradeApp/
 │   ├── src/
 │   │   ├── api/               # Fastify app, routes, controllers, validators, plugins, middleware
 │   │   ├── engine/            # In-memory ExchangeEngine, OrderBook, TriggerEngine, BalanceEngine
-│   │   ├── kafka-infrastructure/  # Kafka client, producer, batch consumer, topic definitions
+│   │   ├── kafka-infrastructure/  # Kafka client, producer, batch consumer, topic definitions, dbSetup
 │   │   ├── ws/                # WebSocket gateway, RoomManager, market & notification handlers
-│   │   ├── db/                # Prisma client (users/balances) + TimescaleDB raw pool + init SQL
+│   │   ├── db/                # Prisma client (users/balances) + TimescaleDB raw pool
 │   │   └── prisma/            # schema.prisma (User, Balance models)
 │   └── docker-compose.yml     # TimescaleDB + Kafka (KRaft) containers
 │
@@ -169,7 +169,7 @@ tradeApp/
 
 ## API Routes
 
-All protected routes require a valid JWT token in the `Authorization: Bearer <token>` header.
+All protected routes require a valid JWT token in the `Authorization: Bearer <token>` header (or cookie).
 
 ### Auth (`/api/v1/auth`)
 
@@ -177,6 +177,7 @@ All protected routes require a valid JWT token in the `Authorization: Bearer <to
 |---|---|---|---|
 | `POST` | `/register` | Public | Register new user, seed default paper balances |
 | `POST` | `/login` | Public | Login, receive JWT |
+| `POST` | `/logout` | Public | Clear authentication session |
 
 ### Orders (`/api/v1/order`)
 
@@ -184,15 +185,14 @@ All protected routes require a valid JWT token in the `Authorization: Bearer <to
 |---|---|---|---|
 | `POST` | `/placeOrder` | Required | Place limit or market order — validates funds, locks balance, sends to engine |
 | `GET` | `/openOrders?market=BTC-USDC` | Required | Returns all resting orders from in-memory order book for the user |
-| `GET` | `/orderHistory?market=BTC-USDC` | Required | Returns latest-status per order from TimescaleDB (last 200) |
+| `GET` | `/history?market=BTC-USDC` | Required | Returns latest-status per order from TimescaleDB (last 200) |
 | `GET` | `/balances` | Required | Returns live asset balances from in-memory engine (falls back to Prisma) |
-| `DELETE` | `/:orderId` | Required | Cancel a resting order and release locked funds |
 
 ### Chart (`/api/v1/chart`)
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/candles?market=BTC-USDC&interval=1m&limit=100` | Public | OHLCV candle data via `time_bucket_gapfill` from TimescaleDB. Intervals: `1m` `5m` `15m` `30m` `1h` `4h` `1d` |
+| `GET` | `/candles?market=BTC-USDC&interval=1m&limit=100` | Public | OHLCV candle data via `time_bucket_gapfill` from TimescaleDB `trades` hypertable. Intervals: `1m`, `5m`, `15m`, `30m`, `1h`, `4h`, `1d` |
 
 ---
 
@@ -253,15 +253,9 @@ docker-compose up -d
 
 This starts **TimescaleDB** on port `5433` and **Kafka** (KRaft) on port `9092`.
 
-### 2. Apply Database Migrations
+### 2. Generate Prisma Client
 
-After the TimescaleDB container is healthy, initialise the hypertables:
-
-```bash
-docker exec -i tradeapp_db psql -U postgres -d tradeapp < backend/src/db/timescale/init.sql
-```
-
-Then generate the Prisma client and apply migrations for users and balances:
+TimescaleDB tables (`trades` hypertable, `orders`, and `balance_events`) are automatically initialized on backend startup via `setupKafkaTables()`. Generate the Prisma client for PostgreSQL relational models (users and balances):
 
 ```bash
 cd backend
@@ -275,7 +269,7 @@ cd backend
 pnpm dev
 ```
 
-Server starts on `http://localhost:3000`. Kafka consumer connects automatically and begins processing events.
+Server starts on `http://localhost:3000`. Kafka consumer connects automatically, verifies/creates database tables, and begins processing events.
 
 ### 4. Start Frontend
 
@@ -322,9 +316,9 @@ The bot connects to the backend WS, waits for the first price tick, then begins 
 
 | Topic | Event Types | Written By | Consumed By |
 |---|---|---|---|
-| `orders` | `ORDER_CREATED`, `ORDER_FILLED`, `ORDER_PARTIALLY_FILLED`, `ORDER_CANCELLED` | ExchangeEngine / MarketEngine | Batch consumer → `orders` hypertable |
+| `orders` | `ORDER_CREATED`, `ORDER_FILLED`, `ORDER_PARTIALLY_FILLED`, `ORDER_CANCELLED` | ExchangeEngine / MarketEngine | Batch consumer → `orders` table |
 | `trades` | `TRADE_EXECUTED` | MarketEngine (on every fill) | Batch consumer → `trades` hypertable |
-| `balances` | `BALANCE_RESERVED`, `BALANCE_RELEASED`, `BALANCE_CHANGED` | BalanceEngine | Batch consumer → `balance_events` hypertable |
+| `balances` | `BALANCE_RESERVED`, `BALANCE_RELEASED`, `BALANCE_CHANGED` | BalanceEngine | Batch consumer → `balance_events` table |
 
 The batch consumer uses `groupId: tradeapp-db-batch-consumer` and processes all three topics in a single consumer group with `eachBatch` for bulk idempotent inserts.
 
@@ -339,15 +333,15 @@ The batch consumer uses `groupId: tradeapp-db-batch-consumer` and processes all 
 | `users` | User accounts — UUID primary key, email, bcrypt password, name |
 | `balances` | Per-user per-asset balance rows — `available` and `locked` float columns, unique on `(userId, asset)` |
 
-### TimescaleDB (Time-Series, Raw SQL)
+### TimescaleDB (Time-Series & Event Log Tables)
 
-| Hypertable | Partition By | Purpose |
-|---|---|---|
-| `trades` | `timestamp` | Every executed fill — price, quantity, maker/taker order and user IDs |
-| `orders` | `timestamp` | Full order event log — one row per lifecycle event per order |
-| `balance_events` | `timestamp` | Audit trail of every balance mutation |
+| Table | Type | Primary / Unique Key | Purpose |
+|---|---|---|---|
+| `trades` | **Hypertable** (partitioned on `timestamp`) | `(trade_id, timestamp)` | Every executed fill — price, quantity, maker/taker order and user IDs |
+| `orders` | **Standard Table** | `event_id` | Full order event log — one row per lifecycle event per order |
+| `balance_events` | **Standard Table** | `event_id` | Audit trail of every balance mutation |
 
-Candle queries use `time_bucket_gapfill($interval, timestamp, $start, $end)` with `first()`, `last()`, `max()`, `min()`, and `sum()` aggregates from the TimescaleDB toolkit.
+Candle queries use `time_bucket_gapfill($interval, timestamp, $start, $end)` with `first()`, `last()`, `max()`, `min()`, and `sum()` aggregates from the TimescaleDB toolkit over the `trades` hypertable.
 
 ---
 

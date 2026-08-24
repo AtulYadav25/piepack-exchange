@@ -76,8 +76,20 @@ export class ExchangeEngine {
         );
     }
 
+    /**
+     * Returns all resting (open / partially_filled) orders for a user in the given market.
+     * These are orders still sitting on the order book waiting to be matched.
+     */
     getOpenOrders(userId: string, market: Market) {
         return this.markets.get(market)?.getOpenOrders(userId) ?? [];
+    }
+
+    /**
+     * Returns a snapshot of all asset balances for a user from the in-memory engine.
+     * Throws if the user has never been upserted (catch and call upsertUserBalancesDb first).
+     */
+    getBalances(userId: string) {
+        return this.balanceEngine.getUserBalances(userId);
     }
 
     cancelOrder(userId: string, marketSymbol: Market, orderId: string): void {

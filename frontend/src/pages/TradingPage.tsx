@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
@@ -12,7 +12,6 @@ import { cryptoMarkets } from '../config/markets'
 import {
     type OrderBookEntry,
     type RecentTrade as MockRecentTrade,
-    type UserOrder,
 } from '../config/tradingMockData'
 import { useMarketSocket, type OrderBookLevel, type RecentTrade as WsTrade } from '../hooks/useMarketSocket'
 
@@ -71,9 +70,7 @@ const TradingPage: React.FC = () => {
     const currentPrice = livePrice ?? initialPrice
 
     // Mock fallbacks (shown before first WS data arrives)
-    const [userOrders, setUserOrders] = useState<UserOrder[]>([])
 
-    // Adapt WS orderbook → component shape (memoised)
     const liveAsks = useMemo(
         () => wsOrderBook ? adaptOrderBookLevels(wsOrderBook.asks) : null,
         [wsOrderBook],
@@ -94,31 +91,16 @@ const TradingPage: React.FC = () => {
     )
     const displayTrades = liveTradesAdapted ?? []
 
-    // Order handlers
-    const handlePlaceOrder = (newOrder: {
-        side: 'BUY' | 'SELL'
-        price: number
-        amount: number
-        type: 'LIMIT' | 'MARKET'
-    }) => {
-        const created: UserOrder = {
-            id: `ord-${Date.now()}`,
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-            pair: activeMarket.symbol,
-            type: newOrder.type,
-            side: newOrder.side,
-            price: newOrder.price,
-            amount: newOrder.amount,
-            filled: 0,
-            status: 'OPEN',
+    const handlePlaceOrder = (
+        newOrder: {
+            side: 'BUY' | 'SELL'
+            price: number
+            amount: number
+            type: 'LIMIT' | 'MARKET'
         }
-        setUserOrders((prev) => [created, ...prev])
-    }
-
-    const handleCancelOrder = (id: string) => {
-        setUserOrders((prev) =>
-            prev.map((o) => (o.id === id ? { ...o, status: 'CANCELLED' } : o))
-        )
+    ) => {
+        // TODO: call POST /placeOrder API — for now just a no-op placeholder
+        console.log('Place order:', newOrder)
     }
 
     return (
@@ -164,8 +146,8 @@ const TradingPage: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Bottom Full-width Panel: Open Orders, Order History, Trades */}
-                <UserOrders orders={userOrders} onCancelOrder={handleCancelOrder} />
+                {/* Bottom Full-width Panel: Open Orders, Order History, Balances */}
+                <UserOrders symbol={symbol} />
             </main>
 
             <Footer />

@@ -5,7 +5,7 @@ import { tsPool } from "../db/timescale.js";
 
 let consumer: Consumer | null = null;
 
-// ─── Bulk SQL Helpers ─────────────────────────────────────────────────────────
+// Bulk SQL Helpers
 
 const bulkInsertOrders = async (events: Event<OrderEventPayload>[]): Promise<void> => {
   if (events.length === 0) return;
