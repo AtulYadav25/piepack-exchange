@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import type { OrderBookEntry } from '../../config/tradingMockData'
 
 interface OrderBookProps {
@@ -9,6 +9,8 @@ interface OrderBookProps {
   baseAsset?: string
 }
 
+const DEPTH_ROWS = 7
+
 export const OrderBook: React.FC<OrderBookProps> = ({
   asks,
   bids,
@@ -16,13 +18,42 @@ export const OrderBook: React.FC<OrderBookProps> = ({
   quoteAsset = 'USDC',
   baseAsset = 'BTC',
 }) => {
-  // Asks come in ascending order from the engine (lowest first).
-  // The last entry has the largest cumulative total — use that for depth bar scaling.
-  const maxAskTotal = asks.length > 0 ? asks[asks.length - 1].total : 1
-  const maxBidTotal = bids.length > 0 ? bids[bids.length - 1].total : 1
+  // Compute max totals for depth bar percentages
+  const maxAskTotal = useMemo(() => {
+    return asks.length > 0 ? Math.max(...asks.map((a) => a.total)) : 1
+  }, [asks])
+
+  const maxBidTotal = useMemo(() => {
+    return bids.length > 0 ? Math.max(...bids.map((b) => b.total)) : 1
+  }, [bids])
+
+  const paddedAsks = useMemo(() => {
+    const sliced = asks.slice(0, DEPTH_ROWS)
+    const reversed = [...sliced].reverse()
+    const emptyCount = DEPTH_ROWS - reversed.length
+    const padding = Array<OrderBookEntry | null>(emptyCount).fill(null)
+    return [...padding, ...reversed]
+  }, [asks])
+
+  const paddedBids = useMemo(() => {
+    const sliced = bids.slice(0, DEPTH_ROWS)
+    const emptyCount = DEPTH_ROWS - sliced.length
+    const padding = Array<OrderBookEntry | null>(emptyCount).fill(null)
+    return [...sliced, ...padding]
+  }, [bids])
+
+  // Calculate real spread (lowest ask - highest bid)
+  const spread = useMemo(() => {
+    const bestAsk = asks[0]?.price
+    const bestBid = bids[0]?.price
+    if (bestAsk !== undefined && bestBid !== undefined && bestAsk >= bestBid) {
+      return (bestAsk - bestBid).toFixed(2)
+    }
+    return '0.00'
+  }, [asks, bids])
 
   return (
-    <div className="bg-zinc-950 border border-zinc-800/80 rounded-xl p-3 flex flex-col justify-between h-full space-y-2">
+    <div className="bg-zinc-950 border border-zinc-800/80 rounded-xl p-3 flex flex-col justify-between h-full select-none">
       {/* Header title & columns */}
       <div>
         <div className="flex items-center justify-between pb-2 mb-2 border-b border-zinc-800/80">
@@ -39,17 +70,17 @@ export const OrderBook: React.FC<OrderBookProps> = ({
         </div>
       </div>
 
-      {/* Top Box: Sell Orders (Asks) — highest price at top, lowest at bottom (closest to spread) */}
-      <div className="flex flex-col justify-end overflow-y-auto no-scrollbar flex-1 max-h-[180px]">
-        <div className="text-[10px] uppercase font-bold text-rose-500/80 pb-0.5 px-1">
-          Sell Orders (Asks)
-        </div>
-        {[...asks].reverse().map((ask, idx) => {
+      {/* Top Box: Sell Orders (Asks) — Fixed 7 Rows (140px height) */}
+      <div className="h-[140px] flex flex-col justify-end overflow-hidden space-y-0.5">
+        {paddedAsks.map((ask, idx) => {
+          if (!ask) {
+            return <div key={`ask-slot-${idx}`} className="h-[18px]" />
+          }
           const depthPercent = Math.min(100, Math.max(5, (ask.total / maxAskTotal) * 100))
           return (
             <div
-              key={`ask-${idx}`}
-              className="relative grid grid-cols-3 text-xs font-mono py-0.5 px-1 hover:bg-zinc-900/80 cursor-pointer rounded"
+              key={`ask-${ask.price}-${idx}`}
+              className="relative grid grid-cols-3 text-xs font-mono h-[18px] items-center px-1 hover:bg-zinc-900/80 cursor-pointer rounded tabular-nums"
             >
               <div
                 className="absolute right-0 top-0 bottom-0 bg-rose-950/40 rounded-r pointer-events-none transition-all duration-300"
@@ -69,28 +100,29 @@ export const OrderBook: React.FC<OrderBookProps> = ({
         })}
       </div>
 
-      {/* Center Spread Banner */}
-      <div className="py-1.5 px-2 bg-zinc-900/90 border-y border-zinc-800/80 rounded flex items-center justify-between font-mono">
+      {/* Center Spread Banner — Fixed Height (34px) */}
+      <div className="h-[34px] my-1 px-2.5 bg-zinc-900/90 border-y border-zinc-800/80 rounded flex items-center justify-between font-mono">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-bold text-emerald-400">
+          <span className="text-sm font-bold text-emerald-400 tabular-nums">
             ${currentPrice.toFixed(2)}
           </span>
-          <span className="text-[10px] text-emerald-500/80">▲ $64,320.50</span>
         </div>
-        <span className="text-[10px] text-zinc-500">Spread 0.02</span>
+        <span className="text-[10px] text-zinc-400 tabular-nums">
+          Spread <span className="text-zinc-200 font-semibold">{spread}</span>
+        </span>
       </div>
 
-      {/* Middle Box: Buy Orders (Bids) */}
-      <div className="space-y-0.5 overflow-y-auto no-scrollbar flex-1 max-h-[180px]">
-        <div className="text-[10px] uppercase font-bold text-emerald-500/80 pb-0.5 px-1">
-          Buy Orders (Bids)
-        </div>
-        {bids.map((bid, idx) => {
+      {/* Middle Box: Buy Orders (Bids) — Fixed 7 Rows (140px height) */}
+      <div className="h-[140px] flex flex-col overflow-hidden space-y-0.5">
+        {paddedBids.map((bid, idx) => {
+          if (!bid) {
+            return <div key={`bid-slot-${idx}`} className="h-[18px]" />
+          }
           const depthPercent = Math.min(100, Math.max(5, (bid.total / maxBidTotal) * 100))
           return (
             <div
-              key={`bid-${idx}`}
-              className="relative grid grid-cols-3 text-xs font-mono py-0.5 px-1 hover:bg-zinc-900/80 cursor-pointer rounded"
+              key={`bid-${bid.price}-${idx}`}
+              className="relative grid grid-cols-3 text-xs font-mono h-[18px] items-center px-1 hover:bg-zinc-900/80 cursor-pointer rounded tabular-nums"
             >
               <div
                 className="absolute right-0 top-0 bottom-0 bg-emerald-950/40 rounded-r pointer-events-none transition-all duration-300"
