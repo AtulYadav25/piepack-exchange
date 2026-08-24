@@ -1,5 +1,5 @@
 <p align="center">
-  <video src="https://x.com/atulcode/status/2086700674151292990/video/1" width="100%" controls></video>
+  <img src="https://i.ibb.co/xtVp4j1G/ezgif-55b0ae501b146d4d.gif" alt="PiePack Exchange Demo" width="100%" />
 </p>
 
 <h1 align="center">PiePack Exchange</h1>
