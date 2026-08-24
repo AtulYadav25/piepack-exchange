@@ -1,6 +1,7 @@
-<p align="center">
-  <img src="https://i.ibb.co/kVm1PhVt/Screenshot-873.png" alt="PiePack Exchange" width="80%" />
-</p>
+<div align="center" style="display:flex; flex-wrap:wrap; justify-content:center; gap:8px;">
+  <img src="https://i.ibb.co/fYNLFWy8/image.png" alt="image" border="0" style="width:50%; min-width:280px; flex:1 1 280px;" />
+  <img src="https://i.ibb.co/kVm1PhVt/Screenshot-873.png" alt="PiePack Exchange" style="width:50%; min-width:280px; flex:1 1 280px;" />
+</div>
 
 <h1 align="center">PiePack Exchange</h1>
 
@@ -12,7 +13,11 @@
 
 ## What is PiePack Exchange?
 
-PiePack Exchange is a paper-trading spot exchange built from scratch. Clients connect via WebSocket to receive live **price ticks**, **order book snapshots (depth 7)**, and **recent trades** as they execute. Orders are validated, funds locked, and matched in-memory by a custom price-time-priority order book. Every fill, cancellation, and balance change is published to **Kafka** topics and consumed asynchronously by a batch consumer that persists events into **TimescaleDB** hypertables. A **Trigger Engine** handles Stop-Loss and Take-Profit orders using OCO (One-Cancels-the-Other) logic, activating conditional orders the moment price crosses their trigger level.
+PiePack Exchange is a paper-trading spot exchange built from scratch. Clients connect via WebSocket to receive live **price ticks**, **order book snapshots (depth 7)**, and **recent trades** as they execute. Orders are validated, funds locked, and matched in-memory by a custom price-time-priority order book. 
+
+Every fill, cancellation, and balance change is published to **Kafka** topics and consumed asynchronously by a batch consumer that persists events into **TimescaleDB** hypertables. 
+
+A **Trigger Engine** handles Stop-Loss and Take-Profit orders using OCO (One-Cancels-the-Other) logic, activating conditional orders the moment price crosses their trigger level.
 
 Three markets are supported: **BTC-USDC**, **ETH-USDC**, and **SOL-USDC**. New users are seeded with paper balances (10 BTC, 100 ETH, 1000 SOL, 100,000 USDC) to start trading immediately. A standalone **TradeBot** process simulates realistic market activity — it subscribes to the live WS price feed, flips between randomised bullish/bearish sentiment phases, and fires limit orders every 500–1200 ms to keep order books full and spreads tight.
 
