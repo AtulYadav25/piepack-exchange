@@ -1,4 +1,5 @@
 import { users, type Market } from './config.js'
+import { WsClient } from './ws.js'
 
 // CONFIG
 
@@ -10,19 +11,20 @@ const ACTIVE_MARKET: Market = 'BTC-USDC'
 
 const API_URL = 'http://localhost:3000/api/v1/order/placeOrder'
 
-// Initial seed prices per market
-const INITIAL_PRICES: Record<Market, number> = {
+// Fallback seed price used only until the first PRICE_TICK arrives from the WS.
+// Once the WS delivers a real trade price, currentPrice is overwritten immediately.
+const SEED_PRICES: Record<Market, number> = {
     'BTC-USDC': 75454.14,
     'ETH-USDC': 1295.47,
     'SOL-USDC': 75.58,
 }
 
 // How far from current price orders can be placed (as a fraction)
-const PRICE_SPREAD = 0.002       // ±0.2% around current price
+const PRICE_SPREAD = 0.002       // ±0.01% around current price
 
 // Quantity ranges per market
 const QTY_CONFIG: Record<Market, { min: number; max: number; decimals: number }> = {
-    'BTC-USDC': { min: 0.001, max: 0.02, decimals: 4 },
+    'BTC-USDC': { min: 0.001, max: 0.01, decimals: 4 },
     'ETH-USDC': { min: 0.01, max: 0.5, decimals: 3 },
     'SOL-USDC': { min: 0.1, max: 5, decimals: 2 },
 }
@@ -36,7 +38,12 @@ const INTERVAL_CHOICES_MS = [500, 600, 750, 800, 1000, 1100, 1200]
 
 // STATE
 
-let currentPrice = INITIAL_PRICES[ACTIVE_MARKET]
+/**
+ * Live price — updated on every PRICE_TICK from the backend WS.
+ * Seeded with a fallback value so the bot can warm up before the first tick.
+ */
+let currentPrice: number = SEED_PRICES[ACTIVE_MARKET]
+let priceReceivedFromWs = false
 
 /**
  * Sentiment bias.
@@ -46,7 +53,7 @@ let currentPrice = INITIAL_PRICES[ACTIVE_MARKET]
 let buyProbability = 0.55   // start mildly bullish
 let isRunning = true
 
-// ─── HELPERS ─────────────────────────────────────────────────────────────────
+// HELPERS
 
 function randomBetween(min: number, max: number): number {
     return Math.random() * (max - min) + min
@@ -71,16 +78,15 @@ function randomUser() {
 }
 
 /**
- * Slowly drift the price in the direction of the current sentiment.
- * The drift is tiny per tick so it feels organic.
+ * Called on every PRICE_TICK from the backend WebSocket.
+ * Keeps currentPrice anchored to real executed trades.
  */
-function driftPrice(side: 'buy' | 'sell'): void {
-    const driftFactor = randomBetween(0.0001, 0.0005) // 0.01% to 0.05% per order
-    if (side === 'buy') {
-        currentPrice *= 1 + driftFactor
-    } else {
-        currentPrice *= 1 - driftFactor
+function handlePriceTick(price: number): void {
+    if (!priceReceivedFromWs) {
+        console.log(`[WS] First price tick received: $${price.toLocaleString()} — bot is now live-anchored`)
+        priceReceivedFromWs = true
     }
+    currentPrice = price
 }
 
 // ORDER PLACEMENT
@@ -90,10 +96,10 @@ async function placeOrder(side: 'buy' | 'sell'): Promise<void> {
     const qty = QTY_CONFIG[ACTIVE_MARKET]
 
     // Price: offset slightly from current price in the right direction
-    const offset = randomBetween(0, PRICE_SPREAD)
+    const offset = randomBetween(-PRICE_SPREAD, PRICE_SPREAD)
     const orderPrice = side === 'buy'
-        ? roundTo(currentPrice * (1 - offset), 2)   // buy slightly below
-        : roundTo(currentPrice * (1 + offset), 2)   // sell slightly above
+        ? roundTo(currentPrice * (1 - offset), 0)   // buy slightly below
+        : roundTo(currentPrice * (1 + offset), 0)   // sell slightly above
 
     const quantity = roundTo(randomBetween(qty.min, qty.max), qty.decimals)
 
@@ -149,8 +155,8 @@ async function runPhaseEngine(): Promise<void> {
         const isBullish = Math.random() > 0.5
 
         buyProbability = isBullish
-            ? randomBetween(0.62, 0.78)   // strong buy bias
-            : randomBetween(0.22, 0.38)   // strong sell bias
+            ? randomBetween(0.58, 0.72)   // strong buy bias
+            : randomBetween(0.25, 0.42)   // strong sell bias
 
         console.log(
             `\n📊 Phase shift → ${isBullish ? '🟢 BULLISH' : '🔴 BEARISH'} ` +
@@ -166,22 +172,43 @@ async function runPhaseEngine(): Promise<void> {
 
 async function runOrderLoop(): Promise<void> {
     console.log(`🤖 TradeBot started on ${ACTIVE_MARKET}`)
-    console.log(`   Seed price: $${currentPrice.toLocaleString()}`)
+    console.log(`   Seed price (fallback): $${currentPrice.toLocaleString()}`)
     console.log(`   Users: ${users.length}`)
-    console.log(`   API: ${API_URL}\n`)
+    console.log(`   API: ${API_URL}`)
+    console.log(`   Waiting for live price from WS...\n`)
+
+    // Wait until at least one real price tick has arrived before trading
+    while (!priceReceivedFromWs && isRunning) {
+        await sleep(200)
+    }
 
     while (isRunning) {
         const side: 'buy' | 'sell' = Math.random() < buyProbability ? 'buy' : 'sell'
 
         await placeOrder(side)
-        driftPrice(side)
+        // No manual drift — currentPrice is kept accurate by live WS ticks
 
         await sleep(randomIntervalMs())
     }
 }
 
 
+// GRACEFUL SHUTDOWN
+
+let wsClient: WsClient | null = null
+
+process.on('SIGINT', () => {
+    console.log('\n⛔ Bot stopped.')
+    isRunning = false
+    wsClient?.disconnect()
+    process.exit(0)
+})
+
 // ENTRY POINT
 
-// Run both loops concurrently — they don't block each other
+// 1. Connect to WS and start receiving live price ticks
+wsClient = new WsClient(ACTIVE_MARKET, handlePriceTick)
+wsClient.connect()
+
+// 2. Run order + phase loops concurrently
 await Promise.all([runOrderLoop(), runPhaseEngine()])
