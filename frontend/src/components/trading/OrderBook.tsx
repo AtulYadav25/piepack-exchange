@@ -16,7 +16,9 @@ export const OrderBook: React.FC<OrderBookProps> = ({
   quoteAsset = 'USDC',
   baseAsset = 'BTC',
 }) => {
-  const maxAskTotal = asks.length > 0 ? asks[0].total : 1
+  // Asks come in ascending order from the engine (lowest first).
+  // The last entry has the largest cumulative total — use that for depth bar scaling.
+  const maxAskTotal = asks.length > 0 ? asks[asks.length - 1].total : 1
   const maxBidTotal = bids.length > 0 ? bids[bids.length - 1].total : 1
 
   return (
@@ -37,12 +39,12 @@ export const OrderBook: React.FC<OrderBookProps> = ({
         </div>
       </div>
 
-      {/* Top Box: Sell Orders (Asks) */}
-      <div className="space-y-0.5 overflow-y-auto no-scrollbar flex-1 max-h-[180px]">
+      {/* Top Box: Sell Orders (Asks) — highest price at top, lowest at bottom (closest to spread) */}
+      <div className="flex flex-col justify-end overflow-y-auto no-scrollbar flex-1 max-h-[180px]">
         <div className="text-[10px] uppercase font-bold text-rose-500/80 pb-0.5 px-1">
           Sell Orders (Asks)
         </div>
-        {asks.map((ask, idx) => {
+        {[...asks].reverse().map((ask, idx) => {
           const depthPercent = Math.min(100, Math.max(5, (ask.total / maxAskTotal) * 100))
           return (
             <div
