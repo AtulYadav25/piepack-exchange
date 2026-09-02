@@ -50,7 +50,20 @@ export interface BalancesResponse {
     balances: Record<string, AssetBalance>
 }
 
-// ─── API ─────────────────────────────────────────────────────────────────────
+export interface PlaceOrderPayload {
+    userId: string
+    market: string
+    order: {
+        userId: string
+        market: string
+        side: 'buy' | 'sell'
+        type: 'limit' | 'market'
+        price?: number | null
+        quantity: number
+    }
+}
+
+// API
 
 export const orderApi = {
     /**
@@ -77,4 +90,12 @@ export const orderApi = {
      */
     getBalances: (): Promise<BalancesResponse> =>
         apiClient.get<BalancesResponse>('/api/v1/order/balances'),
+
+    /**
+     * POST /api/v1/order/placeOrder
+     * Places a limit or market order in the trade engine.
+     */
+    placeOrder: (payload: PlaceOrderPayload): Promise<unknown> =>
+        apiClient.post<unknown>('/api/v1/order/placeOrder', payload),
 }
+

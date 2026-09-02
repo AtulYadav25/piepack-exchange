@@ -1,10 +1,10 @@
 export const users = [{
-    userId: "58317cad-57fc-4417-86f9-70f0137085f3",
-    token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI1ODMxN2NhZC01N2ZjLTQ0MTctODZmOS03MGYwMTM3MDg1ZjMiLCJlbWFpbCI6InBvcHAyQGdtYWlsLmNvbSIsImlhdCI6MTc4NzU0OTgyNSwiZXhwIjoxNzg4MTU0NjI1fQ.6xLmFZH3AHfLFVl72f5PcIfP6ffcCQnFxDW1NGD0cxI"
+    userId: "5be4183d-926c-4474-a3d9-cd52d3ac3932",
+    token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI1YmU0MTgzZC05MjZjLTQ0NzQtYTNkOS1jZDUyZDNhYzM5MzIiLCJlbWFpbCI6InNlZWQxQGdtYWlsLmNvbSIsImlhdCI6MTc4ODM0MDg3MSwiZXhwIjoxNzg4OTQ1NjcxfQ.KIg7fSjqGBgKTu7ya81rKnvcpFrCYaY7rBpz4WJMoVM"
 },
 {
-    userId: "c9b882a0-1881-497c-80b5-2546888c7b05",
-    token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJjOWI4ODJhMC0xODgxLTQ5N2MtODBiNS0yNTQ2ODg4YzdiMDUiLCJlbWFpbCI6InBvcDJAZ21haWwuY29tIiwiaWF0IjoxNzg3NTQ5NjIwLCJleHAiOjE3ODgxNTQ0MjB9.MMofQHynYtTjd6HUobZ2m_2B-3_vhmeB2wvmG7qPJnI",
+    userId: "1c4ed13f-9e87-4a3a-93a1-230ab87e1800",
+    token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiIxYzRlZDEzZi05ZTg3LTRhM2EtOTNhMS0yMzBhYjg3ZTE4MDAiLCJlbWFpbCI6InNlZWQyQGdtYWlsLmNvbSIsImlhdCI6MTc4ODM0MDkyNSwiZXhwIjoxNzg4OTQ1NzI1fQ.aMtNaBSQelnPHNiiN0sq-ijeZWdpFfbDt92n735uqpQ",
 }
 ]
 //AI Agent automatically got me a correct userId from the token which is JWT, is this correct?

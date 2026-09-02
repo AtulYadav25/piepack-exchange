@@ -7,7 +7,7 @@ import { WsClient } from './ws.js'
  * Change this to switch which market the bot trades on.
  * Must be one of: 'BTC-USDC' | 'ETH-USDC' | 'SOL-USDC'
  */
-const ACTIVE_MARKET: Market = 'BTC-USDC'
+const ACTIVE_MARKET: Market = 'ETH-USDC'
 
 const API_URL = 'http://localhost:3000/api/v1/order/placeOrder'
 
