@@ -213,27 +213,37 @@ export class BalanceEngine {
      - maker (sell) → deduct base from locked, credit quote available
      - taker (buy)  → deduct quote from locked, credit base available
     */
-    consumeFunds(trade: Trade, makerOrder: Order, takerOrder: Order): void {
+    consumeFunds(trade: Trade, takerOrder: Order): void {
         const [base, quote] = getMarketAssets(trade.market as any);
 
         const { makerUserId, takerUserId, price, quantity } = trade;
         const quoteAmount = price * quantity;
 
-        // Maker is always a sell (resting limit order on the ask side)
         const makerBalance = this.getUserBalances(makerUserId);
         const makerBase = makerBalance.get(base)!;
         const makerQuote = makerBalance.get(quote)!;
 
-        makerBase.locked -= quantity;   // locked base consumed
-        makerQuote.available += quoteAmount; // receive quote
-
-        // Taker is always a buy (incoming order hitting the book)
         const takerBalance = this.getUserBalances(takerUserId);
         const takerBase = takerBalance.get(base)!;
         const takerQuote = takerBalance.get(quote)!;
 
-        takerQuote.locked -= quoteAmount; // locked quote consumed
-        takerBase.available += quantity;    // receive base
+        if (takerOrder.side === 'buy') {
+            // Maker was sell: locked base consumed, receives quote
+            makerBase.locked -= quantity;
+            makerQuote.available += quoteAmount;
+
+            // Taker was buy: locked quote consumed, receives base
+            takerQuote.locked -= quoteAmount;
+            takerBase.available += quantity;
+        } else {
+            // Maker was buy: locked quote consumed, receives base
+            makerQuote.locked -= quoteAmount;
+            makerBase.available += quantity;
+
+            // Taker was sell: locked base consumed, receives quote
+            takerBase.locked -= quantity;
+            takerQuote.available += quoteAmount;
+        }
 
         this.dirtyUsers.add(makerUserId);
         this.dirtyUsers.add(takerUserId);

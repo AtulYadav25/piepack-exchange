@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Checkbox } from '@/components/ui/checkbox'
 import { useAuthState } from '../../hooks/useAuth'
 import { orderApi, type PlaceOrderPayload } from '../../api/order.api'
 
@@ -30,6 +31,9 @@ export const TradeForm: React.FC<TradeFormProps> = ({
   const [price, setPrice] = useState<string>(currentPrice > 0 ? currentPrice.toString() : '')
   const [amount, setAmount] = useState<string>('')
   const [percentage, setPercentage] = useState<number>(0)
+  const [enableTpSl, setEnableTpSl] = useState<boolean>(false)
+  const [takeProfitPrice, setTakeProfitPrice] = useState<string>('')
+  const [stopLossPrice, setStopLossPrice] = useState<string>('')
 
   // Keep limit price updated with currentPrice if empty or limit order initialized
   useEffect(() => {
@@ -54,6 +58,45 @@ export const TradeForm: React.FC<TradeFormProps> = ({
   const parsedAmount = parseFloat(amount) || 0
   const totalValue = parsedPrice * parsedAmount
 
+  // TP / SL Calculations
+  const parsedTp = parseFloat(takeProfitPrice) || 0
+  const parsedSl = parseFloat(stopLossPrice) || 0
+
+  const getTpGainPercentage = () => {
+    if (!parsedTp || !parsedPrice) return null
+    const pct = side === 'BUY'
+      ? ((parsedTp - parsedPrice) / parsedPrice) * 100
+      : ((parsedPrice - parsedTp) / parsedPrice) * 100
+    return pct
+  }
+
+  const getSlLossPercentage = () => {
+    if (!parsedSl || !parsedPrice) return null
+    const pct = side === 'BUY'
+      ? ((parsedPrice - parsedSl) / parsedPrice) * 100
+      : ((parsedSl - parsedPrice) / parsedPrice) * 100
+    return pct
+  }
+
+  const tpGainPct = getTpGainPercentage()
+  const slLossPct = getSlLossPercentage()
+
+  const handleTpPreset = (pct: number) => {
+    if (parsedPrice <= 0) return
+    const targetPrice = side === 'BUY'
+      ? parsedPrice * (1 + pct / 100)
+      : parsedPrice * (1 - pct / 100)
+    setTakeProfitPrice(Math.max(0, targetPrice).toFixed(2))
+  }
+
+  const handleSlPreset = (pct: number) => {
+    if (parsedPrice <= 0) return
+    const targetPrice = side === 'BUY'
+      ? parsedPrice * (1 - pct / 100)
+      : parsedPrice * (1 + pct / 100)
+    setStopLossPrice(Math.max(0, targetPrice).toFixed(2))
+  }
+
   const handlePercentageClick = (pct: number) => {
     setPercentage(pct)
     if (side === 'BUY') {
@@ -72,6 +115,8 @@ export const TradeForm: React.FC<TradeFormProps> = ({
       toast.success(`${side} order placed successfully!`)
       setAmount('')
       setPercentage(0)
+      setTakeProfitPrice('')
+      setStopLossPrice('')
 
       // Refetch balance & open orders immediately after successful order placement
       queryClient.invalidateQueries({ queryKey: ['balances'] })
@@ -122,7 +167,74 @@ export const TradeForm: React.FC<TradeFormProps> = ({
       return
     }
 
+    const parsedTpPrice = takeProfitPrice ? parseFloat(takeProfitPrice) : 0
+    const parsedSlPrice = stopLossPrice ? parseFloat(stopLossPrice) : 0
+
+    if (enableTpSl) {
+      if (takeProfitPrice) {
+        if (isNaN(parsedTpPrice) || parsedTpPrice <= 0) {
+          toast.error('Please enter a valid Take Profit price')
+          return
+        }
+        if (side === 'BUY' && parsedTpPrice <= parsedPrice) {
+          toast.error(`Take Profit price must be greater than entry price ($${parsedPrice.toFixed(2)})`)
+          return
+        }
+        if (side === 'SELL' && parsedTpPrice >= parsedPrice) {
+          toast.error(`Take Profit price must be less than entry price ($${parsedPrice.toFixed(2)})`)
+          return
+        }
+      }
+
+      if (stopLossPrice) {
+        if (isNaN(parsedSlPrice) || parsedSlPrice <= 0) {
+          toast.error('Please enter a valid Stop Loss price')
+          return
+        }
+        if (side === 'BUY' && parsedSlPrice >= parsedPrice) {
+          toast.error(`Stop Loss price must be less than entry price ($${parsedPrice.toFixed(2)})`)
+          return
+        }
+        if (side === 'SELL' && parsedSlPrice <= parsedPrice) {
+          toast.error(`Stop Loss price must be greater than entry price ($${parsedPrice.toFixed(2)})`)
+          return
+        }
+      }
+    }
+
     const marketSymbol = (symbol || `${baseAsset}-${quoteAsset}`).toUpperCase()
+
+    let bracket: PlaceOrderPayload['bracket'] = undefined
+    if (enableTpSl && (parsedTpPrice > 0 || parsedSlPrice > 0)) {
+      bracket = {}
+      const exitSide = side === 'BUY' ? 'sell' : 'buy'
+
+      if (parsedSlPrice > 0) {
+        bracket.stopLoss = {
+          userId: user.id,
+          market: marketSymbol,
+          side: exitSide,
+          type: 'market',
+          quantity: parsedAmount,
+          triggerPrice: parsedSlPrice,
+          triggerDirection: side === 'BUY' ? 'BELOW' : 'ABOVE',
+          triggerType: 'stoploss',
+        }
+      }
+
+      if (parsedTpPrice > 0) {
+        bracket.takeProfit = {
+          userId: user.id,
+          market: marketSymbol,
+          side: exitSide,
+          type: 'market',
+          quantity: parsedAmount,
+          triggerPrice: parsedTpPrice,
+          triggerDirection: side === 'BUY' ? 'ABOVE' : 'BELOW',
+          triggerType: 'takeprofit',
+        }
+      }
+    }
 
     const payload: PlaceOrderPayload = {
       userId: user.id,
@@ -135,6 +247,7 @@ export const TradeForm: React.FC<TradeFormProps> = ({
         price: orderType === 'LIMIT' ? parsedPrice : null,
         quantity: parsedAmount,
       },
+      bracket,
     }
 
     placeOrderMutation.mutate(payload)
@@ -268,6 +381,116 @@ export const TradeForm: React.FC<TradeFormProps> = ({
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* TP / SL Toggle and Section */}
+          <div className="pt-2 border-t border-zinc-800/80 space-y-2">
+            <div className="flex items-center justify-between">
+              <label htmlFor="tp-sl-toggle" className="flex items-center gap-2 cursor-pointer select-none">
+                <Checkbox
+                  id="tp-sl-toggle"
+                  checked={enableTpSl}
+                  onChange={(e) => setEnableTpSl(e.target.checked)}
+                />
+                <span className="text-xs font-semibold text-zinc-300 hover:text-white transition-colors">
+                  Take Profit / Stop Loss
+                </span>
+              </label>
+              {enableTpSl && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTakeProfitPrice('')
+                    setStopLossPrice('')
+                  }}
+                  className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {enableTpSl && (
+              <div className="p-2.5 bg-zinc-900/60 border border-zinc-800/80 rounded-lg space-y-3">
+                {/* Take Profit */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      <Label htmlFor="tp-price" className="text-[11px] text-zinc-300">Take Profit</Label>
+                    </div>
+                    {tpGainPct !== null && (
+                      <span className={`text-[10px] font-mono font-medium ${tpGainPct > 0 ? 'text-emerald-400' : 'text-zinc-400'}`}>
+                        {tpGainPct > 0 ? `+${tpGainPct.toFixed(1)}%` : `${tpGainPct.toFixed(1)}%`}
+                        {parsedAmount > 0 && ` (~$${Math.abs((parsedTp - parsedPrice) * parsedAmount).toFixed(2)})`}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex gap-1.5 items-center">
+                    <Input
+                      id="tp-price"
+                      type="number"
+                      step="0.01"
+                      value={takeProfitPrice}
+                      onChange={(e) => setTakeProfitPrice(e.target.value)}
+                      placeholder={parsedPrice > 0 ? (side === 'BUY' ? `> ${parsedPrice.toFixed(2)}` : `< ${parsedPrice.toFixed(2)}`) : '0.00'}
+                      className="bg-zinc-950 border-zinc-800 text-white font-mono text-xs focus:border-emerald-600/60 h-7"
+                    />
+                    <div className="flex gap-1 shrink-0">
+                      {[5, 10, 25].map((pct) => (
+                        <button
+                          key={pct}
+                          type="button"
+                          onClick={() => handleTpPreset(pct)}
+                          className="px-1.5 py-0.5 text-[10px] font-mono bg-zinc-800/80 hover:bg-emerald-950 hover:text-emerald-400 border border-zinc-700/60 hover:border-emerald-800 rounded text-zinc-300 transition-colors"
+                        >
+                          +{pct}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Stop Loss */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                      <Label htmlFor="sl-price" className="text-[11px] text-zinc-300">Stop Loss</Label>
+                    </div>
+                    {slLossPct !== null && (
+                      <span className={`text-[10px] font-mono font-medium ${slLossPct > 0 ? 'text-rose-400' : 'text-zinc-400'}`}>
+                        {slLossPct > 0 ? `-${slLossPct.toFixed(1)}%` : `${slLossPct.toFixed(1)}%`}
+                        {parsedAmount > 0 && ` (~$${Math.abs((parsedSl - parsedPrice) * parsedAmount).toFixed(2)})`}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex gap-1.5 items-center">
+                    <Input
+                      id="sl-price"
+                      type="number"
+                      step="0.01"
+                      value={stopLossPrice}
+                      onChange={(e) => setStopLossPrice(e.target.value)}
+                      placeholder={parsedPrice > 0 ? (side === 'BUY' ? `< ${parsedPrice.toFixed(2)}` : `> ${parsedPrice.toFixed(2)}`) : '0.00'}
+                      className="bg-zinc-950 border-zinc-800 text-white font-mono text-xs focus:border-rose-600/60 h-7"
+                    />
+                    <div className="flex gap-1 shrink-0">
+                      {[2, 5, 10].map((pct) => (
+                        <button
+                          key={pct}
+                          type="button"
+                          onClick={() => handleSlPreset(pct)}
+                          className="px-1.5 py-0.5 text-[10px] font-mono bg-zinc-800/80 hover:bg-rose-950 hover:text-rose-400 border border-zinc-700/60 hover:border-rose-800 rounded text-zinc-300 transition-colors"
+                        >
+                          -{pct}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Order Value Display */}

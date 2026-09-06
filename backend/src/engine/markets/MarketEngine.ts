@@ -61,7 +61,7 @@ export class MarketEngine {
         for (const trade of executedTrades) {
             const takerOrder = req.order;
             const makerOrder: Order = { ...takerOrder, userId: trade.makerUserId };
-            this.balanceEngine.consumeFunds(trade, makerOrder, takerOrder);
+            this.balanceEngine.consumeFunds(trade, takerOrder);
 
             // Produce TRADE_EXECUTED event to Kafka
             produceTradeEvent(TRADE_EVENT_TYPES.EXECUTED, {
@@ -121,6 +121,13 @@ export class MarketEngine {
         // Registers SL and TP with filled quantity only
         if (filledQuantity > 0 && req.bracket) {
             const { stopLoss, takeProfit } = req.bracket;
+
+            if (stopLoss) {
+                stopLoss.id = stopLoss.id || crypto.randomUUID();
+            }
+            if (takeProfit) {
+                takeProfit.id = takeProfit.id || crypto.randomUUID();
+            }
 
             // Link OCO siblings if both SL and TP are present
             if (stopLoss && takeProfit) {
@@ -194,6 +201,10 @@ export class MarketEngine {
                     this.currentPrice = newTrades.at(-1)!.price;
 
                     for (const trade of newTrades) {
+                        const takerOrder = constructedOrder;
+                        const makerOrder: Order = { ...takerOrder, userId: trade.makerUserId };
+                        this.balanceEngine.consumeFunds(trade, takerOrder);
+
                         produceTradeEvent(TRADE_EVENT_TYPES.EXECUTED, {
                             tradeId: trade.id,
                             market: trade.market,
@@ -206,6 +217,21 @@ export class MarketEngine {
                             executedAt: trade.executedAt,
                         }).catch((err) => console.error("Failed to produce TRADE_EXECUTED event:", err));
                     }
+
+                    // Produce order status event for triggered order
+                    const remaining = constructedOrder.remainingQuantity ?? 0;
+                    const eventType = remaining === 0 ? ORDER_EVENT_TYPES.FILLED : ORDER_EVENT_TYPES.PARTIALLY_FILLED;
+                    produceOrderEvent(eventType, {
+                        orderId: constructedOrder.id || crypto.randomUUID(),
+                        userId: constructedOrder.userId,
+                        market: constructedOrder.market,
+                        side: constructedOrder.side,
+                        type: constructedOrder.type,
+                        price: constructedOrder.price,
+                        quantity: constructedOrder.quantity,
+                        remainingQuantity: remaining,
+                        status: remaining === 0 ? 'filled' : 'partially_filled',
+                    }).catch((err) => console.error("Failed to produce trigger order status event:", err));
                 }
             }
 

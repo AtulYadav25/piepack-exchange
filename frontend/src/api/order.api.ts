@@ -50,17 +50,44 @@ export interface BalancesResponse {
     balances: Record<string, AssetBalance>
 }
 
+export interface TriggerOrderPayload {
+    id?: string
+    userId: string
+    market: string
+    side: 'buy' | 'sell'
+    type: 'limit' | 'market'
+    orderId?: string
+    quantity: number
+    remainingQuantity?: number
+    status?: 'open' | 'partially_filled' | 'filled' | 'cancelled'
+    createdAt?: number
+    triggerPrice: number
+    triggerDirection: 'ABOVE' | 'BELOW'
+    triggerType: 'stoploss' | 'takeprofit'
+    siblingId?: string
+}
+
+export interface BracketPayload {
+    stopLoss?: TriggerOrderPayload
+    takeProfit?: TriggerOrderPayload
+}
+
 export interface PlaceOrderPayload {
     userId: string
     market: string
     order: {
+        id?: string
         userId: string
         market: string
         side: 'buy' | 'sell'
         type: 'limit' | 'market'
         price?: number | null
         quantity: number
+        remainingQuantity?: number
+        status?: 'open' | 'partially_filled' | 'filled' | 'cancelled'
+        createdAt?: number
     }
+    bracket?: BracketPayload
 }
 
 // API

@@ -9,25 +9,43 @@ export const placeOrder = async (req: FastifyRequest<{ Body: PlaceOrderRequest }
     try {
 
         // Validate user - check JWT token
-        if (!req.user || req.user.userId !== req.body.order.userId) {
+        if (!req.user || req.user.userId !== req.body.order.userId || req.user.userId !== req.body.userId) {
             return reply.status(401).send({ message: "Unauthorized" });
         }
 
-        const { market, order } = req.body;
+        const { market, order, bracket } = req.body;
         if (!market) {
             return reply.status(400).send({ message: "Invalid market" })
         }
         if (market !== order.market) {
-            return reply.status(400).send({ message: "Invalid Order" })
+            return reply.status(400).send({ message: "Invalid Order: Market mismatch" })
+        }
+
+        if (bracket?.stopLoss) {
+            if (bracket.stopLoss.userId !== req.user.userId) {
+                return reply.status(401).send({ message: "Unauthorized stop loss user" });
+            }
+            if (bracket.stopLoss.market !== market) {
+                return reply.status(400).send({ message: "Invalid Stop Loss: Market mismatch" });
+            }
+        }
+
+        if (bracket?.takeProfit) {
+            if (bracket.takeProfit.userId !== req.user.userId) {
+                return reply.status(401).send({ message: "Unauthorized take profit user" });
+            }
+            if (bracket.takeProfit.market !== market) {
+                return reply.status(400).send({ message: "Invalid Take Profit: Market mismatch" });
+            }
         }
 
         const result = engine.placeOrder(req.body);
 
-        return reply.status(200).send(result)
+        return reply.status(200).send(result ?? { success: true, message: "Order placed successfully" });
 
-    } catch (error) {
+    } catch (error: any) {
         console.log(error)
-        return reply.status(400).send({ message: "Invalid order" })
+        return reply.status(400).send({ message: error?.message || "Invalid order" })
     }
 }
 
