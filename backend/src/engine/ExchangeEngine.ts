@@ -39,7 +39,7 @@ export class ExchangeEngine {
         await this.balanceEngine.flushToDb();
     }
 
-    // ── Order placement ────────────────────────────────────────────────────
+    // Order placement
 
     placeOrder(req: PlaceOrderRequest): void {
         const market = this.markets.get(req.market);

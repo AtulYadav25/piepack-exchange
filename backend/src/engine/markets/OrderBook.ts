@@ -8,8 +8,8 @@ export class OrderBook {
     }
 
     // price -> orders (FIFO)
-    private bids: Map<number, Order[]> = new Map();
-    private asks: Map<number, Order[]> = new Map();
+    private bids: Map<number, Order[]> = new Map(); // Buy
+    private asks: Map<number, Order[]> = new Map(); // Sell
 
     bestBid: number | null = null;
     bestAsk: number | null = null;

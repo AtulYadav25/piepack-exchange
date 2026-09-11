@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/api/server.ts",
     "db:generate": "prisma generate --config src/prisma.config.ts",
+    "db:push": "prisma db push --config src/prisma.config.ts",
+    "db:migrate": "prisma migrate deploy --config src/prisma.config.ts",
     "db:studio": "prisma studio --config src/prisma.config.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

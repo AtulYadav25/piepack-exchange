@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://i.ibb.co/xtVp4j1G/ezgif-55b0ae501b146d4d.gif" alt="PiePack Exchange Demo" width="100%" />
+  <img src="https://plain-apac-prod-public.komododecks.com/202609/11/AEsh6cG6sRoXLFhLOc98/image.png" alt="PiePack Exchange Demo" width="100%" />
 </p>
 
 <h1 align="center">PiePack Exchange</h1>
@@ -20,9 +20,6 @@ A **Trigger Engine** handles Stop-Loss and Take-Profit orders using OCO (One-Can
 
 Three markets are supported: **BTC-USDC**, **ETH-USDC**, and **SOL-USDC**. New users are seeded with paper balances (10 BTC, 100 ETH, 1000 SOL, 100,000 USDC) to start trading immediately. A standalone **TradeBot** process simulates realistic market activity — it subscribes to the live WS price feed, flips between randomised bullish/bearish sentiment phases, and fires limit orders every 500–1200 ms to keep order books full and spreads tight.
 
-<p align="center">
-  <img src="https://i.ibb.co/kVm1PhVt/Screenshot-873.png" alt="PiePack Exchange" width="100%" />
-</p>
 
 ---
 
@@ -240,54 +237,157 @@ Configure `ACTIVE_MARKET` in `src/index.ts` to switch between `BTC-USDC`, `ETH-U
 
 ### Prerequisites
 
-- Node.js 20+
-- pnpm
-- Docker & Docker Compose
+- **Node.js**: v20+
+- **Package Manager**: `pnpm` (`npm install -g pnpm`)
+- **Docker & Docker Compose**: For TimescaleDB & Kafka
 
-### 1. Start Infrastructure
+---
+
+### Step-by-Step Setup
+
+#### 1. Install Dependencies
+
+Install dependencies across the packages:
 
 ```bash
+# Backend dependencies
 cd backend
-docker-compose up -d
+pnpm install
+
+# Frontend dependencies
+cd ../frontend
+pnpm install
+
+# TradeBot dependencies (optional)
+cd ../tradeBot
+pnpm install
 ```
 
-This starts **TimescaleDB** on port `5433` and **Kafka** (KRaft) on port `9092`.
+#### 2. Configure Environment Variables
 
-### 2. Generate Prisma Client
+Create the `.env` files from the provided examples:
 
-TimescaleDB tables (`trades` hypertable, `orders`, and `balance_events`) are automatically initialized on backend startup via `setupKafkaTables()`. Generate the Prisma client for PostgreSQL relational models (users and balances):
+**Backend (`backend/.env`):**
+```bash
+cd backend
+cp .env.example .env
+```
+*(Default settings connect to PostgreSQL/TimescaleDB on port `5433` and Kafka on port `9092`)*
+
+**Frontend (`frontend/.env`):**
+```bash
+cd frontend
+cp .env.example .env
+```
+
+---
+
+#### 3. Start Docker Infrastructure
+
+Run Docker Compose from the `backend/` directory to spin up **TimescaleDB** (PostgreSQL 16) and **Apache Kafka** (KRaft mode):
 
 ```bash
 cd backend
+docker compose up -d
+```
+
+> **Ports Exposed:**
+> - **TimescaleDB / PostgreSQL**: `localhost:5433` (`5432` mapped to host `5433` to avoid conflicts with local Postgres)
+> - **Kafka Broker**: `localhost:9092`
+
+---
+
+#### 4. Setup Prisma & Database Tables (Crucial Step)
+
+The database stores two categories of data:
+1. **Relational Models (`users`, `balances`)**: Managed by Prisma ORM.
+2. **Time-Series Event Tables (`trades` hypertable, `orders`, `balance_events`)**: Managed by the backend TimescaleDB raw pool (`setupKafkaTables()`).
+
+> [!IMPORTANT]
+> **Why `pnpm db:generate` alone is not enough:**
+> `pnpm db:generate` only compiles TypeScript types and client artifacts in `src/generated/prisma`. It **does NOT** create tables in the database.
+> If you start with a fresh database or after deleting Docker volumes (`docker compose down -v`), you **MUST run `pnpm db:push`** to initialize the `users` and `balances` tables in PostgreSQL.
+
+Run the following inside `backend/`:
+
+```bash
+cd backend
+
+# 1. Generate the Prisma Client types
 pnpm db:generate
+
+# 2. Push schema to create 'users' and 'balances' tables in the database
+pnpm db:push
 ```
 
-### 3. Start Backend
+##### All Available Prisma Commands
+
+| Command | Script | Description |
+|---|---|---|
+| `pnpm db:generate` | `prisma generate --config src/prisma.config.ts` | Generates TypeScript Prisma Client code in `src/generated/prisma` |
+| `pnpm db:push` | `prisma db push --config src/prisma.config.ts` | **Initializes / syncs database tables** directly from `schema.prisma` without migration files (ideal for local development & fresh DBs) |
+| `pnpm db:migrate` | `prisma migrate deploy --config src/prisma.config.ts` | Applies existing migration files to the database |
+| `pnpm db:studio` | `prisma studio --config src/prisma.config.ts` | Opens a web-based GUI at `http://localhost:5555` to browse and edit database rows |
+
+---
+
+#### 5. Start Backend Server
 
 ```bash
 cd backend
 pnpm dev
 ```
 
-Server starts on `http://localhost:3000`. Kafka consumer connects automatically, verifies/creates database tables, and begins processing events.
+- Server starts on `http://localhost:3000` (WebSocket at `ws://localhost:3000`).
+- On startup, the backend automatically calls `setupKafkaTables()`, ensuring TimescaleDB extensions and `trades`, `orders`, and `balance_events` hypertables/indexes are active.
 
-### 4. Start Frontend
+---
+
+#### 6. Start Frontend
+
+In a separate terminal:
 
 ```bash
 cd frontend
 pnpm dev
 ```
 
-Frontend starts on `http://localhost:5173`.
+- Web UI is accessible at `http://localhost:5173`.
+- Register a new account to receive instant default paper balances (10 BTC, 100 ETH, 1000 SOL, 100,000 USDC) and start trading!
 
-### 5. Start TradeBot (Optional)
+---
+
+#### 7. Start TradeBot (Optional Market Maker)
+
+In a separate terminal:
 
 ```bash
 cd tradeBot
 pnpm dev
 ```
 
-The bot connects to the backend WS, waits for the first price tick, then begins placing orders. Markets stay liquid even with no real users trading.
+- The bot connects to the backend WebSocket, listens for live price ticks, and automatically submits limit orders to maintain market liquidity and realistic spread.
+
+---
+
+## Docker Lifecycle & Database Reset
+
+If you ever need to stop or completely reset the database state:
+
+```bash
+# Stop containers
+cd backend
+docker compose down
+
+# Wipe all database data & volumes (Fresh start)
+docker compose down -v
+
+# Re-launch containers
+docker compose up -d
+
+# Re-create tables (REQUIRED after wiping volumes)
+pnpm db:push
+```
 
 ---
 
@@ -295,20 +395,23 @@ The bot connects to the backend WS, waits for the first price tick, then begins 
 
 ### Backend (`backend/.env`)
 
-| Variable | Description |
-|---|---|
-| `PORT` | Fastify server port (default: `3000`) |
-| `DATABASE_URL` | PostgreSQL connection string for Prisma (users, balances) |
-| `TIMESCALE_URL` | PostgreSQL connection string for the raw TimescaleDB pool (trades, orders, balance events) |
-| `KAFKA_BROKER` | Kafka broker address (default: `localhost:9092`) |
-| `JWT_SECRET` | Secret for signing / verifying JWT tokens |
+| Variable | Default | Description |
+|---|---|---|
+| `NODE_ENV` | `DEVELOPMENT` | Environment mode (`DEVELOPMENT` \| `PRODUCTION`) |
+| `PORT` | `3000` | Fastify server port |
+| `DATABASE_URL` | `postgresql://postgres:postgres@localhost:5433/tradeapp` | PostgreSQL connection string (used by Prisma and TimescaleDB raw pool) |
+| `POSTGRES_USER` | `postgres` | Docker PostgreSQL username |
+| `POSTGRES_PASSWORD` | `postgres` | Docker PostgreSQL password |
+| `POSTGRES_DB` | `tradeapp` | Docker PostgreSQL database name |
+| `KAFKA_BROKERS` | `localhost:9092` | Kafka broker connection address |
+| `JWT_SECRET` | `supersecret_change_me_in_production_please` | Secret key for signing / verifying JWT tokens |
 
 ### Frontend (`frontend/.env`)
 
-| Variable | Description |
-|---|---|
-| `VITE_API_URL` | Backend REST base URL (default: `http://localhost:3000`) |
-| `VITE_WS_URL` | Backend WebSocket URL (default: `ws://localhost:3000`) |
+| Variable | Default | Description |
+|---|---|---|
+| `VITE_API_BASE_URL` | `http://localhost:3000` | Backend REST API base URL |
+| `VITE_WS_URL` | `ws://localhost:3000` | Backend WebSocket Gateway URL |
 
 ---
 
